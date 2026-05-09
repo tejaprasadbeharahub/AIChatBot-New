@@ -2,10 +2,13 @@ import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { clearStoredToken, getStoredToken, googleLogin, renderGoogleSignInButton } from './api/auth'
 import { login, register } from './api/auth'
-import { createChat, deleteChat, downloadAttachment, extractAttachmentText, getChats, getMessages, sendChatMessage, uploadAttachment, updateChatTitle } from './api/chat'
-import type { Attachment, Chat, Message } from './types/chat'
+import { createChat, createUserMessage, deleteChat, downloadAttachment, extractAttachmentText, getChats, getMessages, sendChatMessage, uploadAttachment, updateChatTitle } from './api/chat'
+import { generateImage, getImageStatus, deleteGeneratedImage } from './api/image_generation'
+import type { Attachment, Chat, Message, GeneratedImage } from './types/chat'
 import { AttachmentPreview } from './components/chat/AttachmentPreview'
 import { AttachmentUploadButton } from './components/chat/AttachmentUploadButton'
+import { GeneratedImageDisplay } from './components/chat/GeneratedImageDisplay'
+import './components/chat/ImageGeneration.css'
 
 type ChatRole = 'user' | 'assistant'
 
@@ -14,6 +17,7 @@ type ChatMessage = {
   role: ChatRole
   content: string
   attachments: Attachment[]
+  generated_images?: GeneratedImage[]
 }
 
 function createId() {
@@ -54,10 +58,12 @@ function App() {
   const [isLoadingMessages, setIsLoadingMessages] = useState(false)
   const [isSending, setIsSending] = useState(false)
   const [isUploadingAttachment, setIsUploadingAttachment] = useState(false)
+  const [isGeneratingImage, setIsGeneratingImage] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const listRef = useRef<HTMLDivElement | null>(null)
   const googleButtonRef = useRef<HTMLDivElement | null>(null)
+  const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
     const container = listRef.current
@@ -305,6 +311,92 @@ function App() {
     }
   }
 
+  // Helper function to trigger image generation
+  async function triggerImageGeneration(
+    prompt: string,
+    chatId: string,
+    backendMessageId: string,
+    targetUiMessageId: string,
+  ) {
+    try {
+      setIsGeneratingImage(true)
+      const generationResponse = await generateImage({
+        prompt,
+        chat_id: chatId,
+        message_id: backendMessageId,
+      })
+
+      // Start polling for image generation status
+      let pollCount = 0
+      const maxPolls = 120
+
+      const pollGeneration = async () => {
+        if (pollCount >= maxPolls) {
+          setError('Image generation timeout')
+          setIsGeneratingImage(false)
+          if (pollingIntervalRef.current) {
+            clearInterval(pollingIntervalRef.current)
+            pollingIntervalRef.current = null
+          }
+          return
+        }
+
+        try {
+          const status = await getImageStatus(generationResponse.id)
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === targetUiMessageId ? { ...msg, generated_images: [status] } : msg
+            )
+          )
+
+          if (status.status === 'completed' || status.status === 'failed') {
+            setIsGeneratingImage(false)
+            if (pollingIntervalRef.current) {
+              clearInterval(pollingIntervalRef.current)
+              pollingIntervalRef.current = null
+            }
+          }
+          pollCount++
+        } catch (err) {
+          console.error('Polling failed:', err)
+        }
+      }
+
+      await pollGeneration()
+      if (generationResponse.status === 'pending') {
+        pollingIntervalRef.current = setInterval(pollGeneration, 1000)
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to generate image'
+      setError(message)
+      setIsGeneratingImage(false)
+    }
+  }
+
+  async function handleDeleteGeneratedImage(imageId: string) {
+    try {
+      await deleteGeneratedImage(imageId)
+      setMessages((prev) =>
+        prev.map((msg) => ({
+          ...msg,
+          generated_images: msg.generated_images?.filter((img) => img.id !== imageId),
+        }))
+      )
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to delete image'
+      setError(message)
+    }
+  }
+
+  // Cleanup polling interval on unmount
+  useEffect(() => {
+    return () => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current)
+      }
+    }
+  }, [])
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const trimmed = input.trim()
@@ -421,6 +513,66 @@ function App() {
       setError(message)
     } finally {
       setIsSending(false)
+    }
+  }
+
+  async function handleGenerateImageClick() {
+    const trimmed = input.trim()
+    if (!trimmed || isSending || isGeneratingImage || !token) {
+      return
+    }
+
+    const userMessage: ChatMessage = {
+      id: createId(),
+      role: 'user',
+      content: trimmed,
+      attachments: [],
+    }
+
+    setMessages((prev) => [...prev, userMessage])
+    setInput('')
+    setError(null)
+
+    try {
+      let chatId = activeChatId
+      if (!chatId) {
+        const created = await createChat()
+        chatId = created.id
+        setActiveChatId(chatId)
+      }
+
+      let backendMessageId: string
+      try {
+        const createdUserMessage = await createUserMessage(chatId, trimmed)
+        backendMessageId = createdUserMessage.id
+      } catch (requestError) {
+        const message = requestError instanceof Error ? requestError.message : ''
+        // Backward-compatibility path for servers that do not expose POST /api/chats/{chat_id}/messages yet.
+        if (message.toLowerCase().includes('method not allowed') || message.includes('405')) {
+          const response = await sendChatMessage({
+            message: trimmed,
+            chat_id: chatId,
+          })
+          backendMessageId = response.user_message_id
+        } else {
+          throw requestError
+        }
+      }
+
+      const imageRequestMessage: ChatMessage = {
+        id: createId(),
+        role: 'assistant',
+        content: `Generating image: ${trimmed}`,
+        attachments: [],
+        generated_images: [],
+      }
+      setMessages((prev) => [...prev, imageRequestMessage])
+
+      await triggerImageGeneration(trimmed, chatId, backendMessageId, imageRequestMessage.id)
+      await refreshChats(true)
+    } catch (requestError) {
+      const message = requestError instanceof Error ? requestError.message : 'Failed to generate image'
+      setError(message)
     }
   }
 
@@ -555,6 +707,17 @@ function App() {
                     ))}
                   </div>
                 )}
+                {message.generated_images && message.generated_images.length > 0 && (
+                  <div className="message-generated-images">
+                    {message.generated_images.map((image) => (
+                      <GeneratedImageDisplay
+                        key={image.id}
+                        image={image}
+                        onDelete={handleDeleteGeneratedImage}
+                      />
+                    ))}
+                  </div>
+                )}
               </div>
             </article>
           ))}
@@ -575,7 +738,7 @@ function App() {
                 className="composer-input"
                 placeholder="Ask anything..."
                 rows={2}
-                disabled={isSending || isBootstrapping || isUploadingAttachment}
+                disabled={isSending || isBootstrapping || isUploadingAttachment || isGeneratingImage}
               />
               {pendingAttachments.length > 0 && (
                 <div className="pending-attachments">
@@ -598,19 +761,31 @@ function App() {
                 </div>
               )}
             </div>
-            <AttachmentUploadButton
-              onAttachmentSelect={handleAttachmentSelect}
-              disabled={isSending || isBootstrapping || isUploadingAttachment}
-            />
-            <button
-              type="submit"
-              className="composer-send"
-              disabled={
-                isSending || isBootstrapping || isUploadingAttachment || input.trim().length === 0
-              }
-            >
-              {isSending ? 'Sending...' : isUploadingAttachment ? 'Uploading...' : 'Send'}
-            </button>
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-end' }}>
+              <AttachmentUploadButton
+                onAttachmentSelect={handleAttachmentSelect}
+                disabled={isSending || isBootstrapping || isUploadingAttachment || isGeneratingImage}
+              />
+              <button
+                type="button"
+                className="composer-send"
+                onClick={() => void handleGenerateImageClick()}
+                disabled={
+                  isSending || isBootstrapping || isUploadingAttachment || isGeneratingImage || input.trim().length === 0
+                }
+              >
+                {isGeneratingImage ? 'Generating...' : 'Genrate Image'}
+              </button>
+              <button
+                type="submit"
+                className="composer-send"
+                disabled={
+                  isSending || isBootstrapping || isUploadingAttachment || isGeneratingImage || input.trim().length === 0
+                }
+              >
+                {isSending ? 'Sending...' : isUploadingAttachment ? 'Uploading...' : isGeneratingImage ? 'Generating...' : 'Send'}
+              </button>
+            </div>
           </form>
           {error ? <p className="error-text">{error}</p> : null}
         </footer>

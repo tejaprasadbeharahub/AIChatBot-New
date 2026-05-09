@@ -33,7 +33,15 @@ def get_recent_messages_for_chat(db: Session, chat_id: uuid.UUID, limit: int) ->
 
 
 def create_message(db: Session, chat_id: uuid.UUID, role: str, content: str) -> Message:
-    message = Message(chat_id=chat_id, role=role, content=content)
+    normalized_content = (content or "").strip()
+
+    # Keep persisted chat history valid for pydantic models that require min_length=1.
+    if role == "user" and not normalized_content:
+        raise ValueError("Message content cannot be empty")
+    if role == "assistant" and not normalized_content:
+        normalized_content = "I could not generate a response. Please try again."
+
+    message = Message(chat_id=chat_id, role=role, content=normalized_content)
     db.add(message)
     db.commit()
     db.refresh(message)

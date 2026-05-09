@@ -17,4 +17,8 @@ def get_thread_memory(db: Session, chat_id: uuid.UUID, max_turns: int) -> list[C
         return []
 
     messages = get_recent_messages_for_chat(db, chat_id=chat_id, limit=message_limit)
-    return [ChatMessage(role=message.role, content=message.content) for message in messages]
+    return [
+        ChatMessage(role=message.role, content=message.content.strip())
+        for message in messages
+        if message.content and message.content.strip()
+    ]

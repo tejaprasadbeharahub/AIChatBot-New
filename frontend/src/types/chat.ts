@@ -23,6 +23,8 @@ export type Attachment = {
   upload_timestamp: string
 }
 
+export type { GeneratedImage } from './image_generation'
+
 export type Message = {
   id: string
   chat_id: string
@@ -30,4 +32,5 @@ export type Message = {
   content: string
   timestamp: string
   attachments: Attachment[]
+  generated_images?: any[]
 }

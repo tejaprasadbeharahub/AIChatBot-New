@@ -5,6 +5,7 @@ from app.api.auth import router as auth_router
 from app.api.attachment import router as attachment_router
 from app.api.chat import router as chat_router
 from app.api.chats import router as chats_router
+from app.api.image_generation import router as image_generation_router
 from app.core.config import settings
 
 
@@ -30,6 +31,7 @@ app.include_router(chat_router, prefix="/api")
 app.include_router(auth_router, prefix="/api")
 app.include_router(chats_router, prefix="/api")
 app.include_router(attachment_router, prefix="/api")
+app.include_router(image_generation_router, prefix="/api")
 
 
 @app.get("/health")

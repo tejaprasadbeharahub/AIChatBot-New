@@ -26,3 +26,7 @@ class MessageRead(BaseModel):
     attachments: list[AttachmentRef] = []
 
     model_config = {"from_attributes": True}
+
+
+class MessageCreateRequest(BaseModel):
+    content: str

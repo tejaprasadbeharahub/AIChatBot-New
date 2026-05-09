@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     litellm_proxy_url: Optional[str] = None
     litellm_api_key: Optional[str] = None
     gemini_api_key: Optional[str] = None
+    google_generative_ai_key: Optional[str] = None
     llm_model: Optional[str] = None
     litellm_embedding_model: Optional[str] = None
     image_gen_model: Optional[str] = None
@@ -44,6 +45,11 @@ class Settings(BaseSettings):
 
     max_upload_mb: int = 20
     upload_dir: Optional[str] = None
+
+    image_gen_max_per_chat: int = 10
+    image_gen_max_per_day: int = 50
+    image_gen_timeout_seconds: int = 120
+    image_storage_dir: Optional[str] = None
 
 
 @lru_cache

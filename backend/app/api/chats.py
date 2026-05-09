@@ -7,9 +7,9 @@ from app.auth.dependencies import get_current_user
 from app.db.session import get_db
 from app.models.user import User
 from app.repositories.chat_repo import get_chat_by_id
-from app.repositories.message_repo import get_messages_for_chat
+from app.repositories.message_repo import create_message, get_messages_for_chat
 from app.schemas.chat import ChatRead, ChatUpdateRequest
-from app.schemas.message import MessageRead
+from app.schemas.message import MessageCreateRequest, MessageRead
 from app.services.chat_thread_service import create_chat as create_chat_thread
 from app.services.chat_thread_service import delete_chat, get_user_chats, update_chat_title
 
@@ -68,3 +68,23 @@ def list_messages(
     if chat is None or chat.user_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chat not found")
     return get_messages_for_chat(db, chat_id=chat_id)  # type: ignore[return-value]
+
+
+@router.post("/{chat_id}/messages", response_model=MessageRead, status_code=status.HTTP_201_CREATED)
+def create_user_message(
+    chat_id: uuid.UUID,
+    payload: MessageCreateRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> MessageRead:
+    """Create a user message in an existing chat without generating an assistant reply."""
+    chat = get_chat_by_id(db, chat_id=chat_id)
+    if chat is None or chat.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chat not found")
+
+    content = (payload.content or "").strip()
+    if not content:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Message content cannot be empty")
+
+    message = create_message(db, chat_id=chat_id, role="user", content=content)
+    return message  # type: ignore[return-value]

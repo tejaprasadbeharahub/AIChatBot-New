@@ -26,9 +26,15 @@ def create_chat_response(request: ChatRequest, db: Session, current_user: User) 
     if chat is None:
         chat = create_chat(db, current_user.id)
 
+    normalized_user_message = request.message.strip()
+    if not normalized_user_message:
+        normalized_user_message = "Please help me with this request."
+
     memory = get_thread_memory(db, chat_id=chat.id, max_turns=settings.chat_memory_turns)
-    user_message = create_message(db, chat.id, "user", request.message)
-    model_input = _build_model_input(request.message, request.attachment_context)
-    reply = generate_reply(message=model_input, history=memory, temperature=request.temperature)
+    user_message = create_message(db, chat.id, "user", normalized_user_message)
+    model_input = _build_model_input(normalized_user_message, request.attachment_context)
+    reply = (generate_reply(message=model_input, history=memory, temperature=request.temperature) or "").strip()
+    if not reply:
+        reply = "I could not generate a response. Please try again."
     create_message(db, chat.id, "assistant", reply)
     return ChatResponse(reply=reply, model=resolve_model_name(), chat_id=chat.id, user_message_id=user_message.id)

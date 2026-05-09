@@ -9,6 +9,7 @@ from app.models import attachment as _attachment_model  # noqa: F401
 from app.models import chat as _chat_model  # noqa: F401
 from app.models import message as _message_model  # noqa: F401
 from app.models import user as _user_model  # noqa: F401
+from app.models import generated_image as _generated_image_model  # noqa: F401
 
 
 def _make_engine():

@@ -34,6 +34,25 @@ function authJsonHeaders(): HeadersInit {
   return { 'Content-Type': 'application/json', ...authHeaders() }
 }
 
+function formatErrorDetail(err: unknown): string | null {
+  if (!err || typeof err !== 'object') return null
+  const detail = (err as { detail?: unknown }).detail
+  if (typeof detail === 'string') return detail
+  if (Array.isArray(detail)) {
+    return detail
+      .map((item) => {
+        if (!item || typeof item !== 'object') return String(item)
+        const msg = (item as { msg?: unknown }).msg
+        const loc = (item as { loc?: unknown }).loc
+        const locText = Array.isArray(loc) ? loc.join('.') : ''
+        return `${locText ? `${locText}: ` : ''}${typeof msg === 'string' ? msg : JSON.stringify(item)}`
+      })
+      .join('; ')
+  }
+  if (detail !== undefined) return JSON.stringify(detail)
+  return null
+}
+
 export async function getChats(): Promise<ChatThread[]> {
   const response = await fetch(`${API_BASE_URL}/api/chats`, {
     headers: authJsonHeaders(),
@@ -87,6 +106,28 @@ export async function getMessages(chatId: string): Promise<Message[]> {
   return (await response.json()) as Message[]
 }
 
+export async function createUserMessage(chatId: string, content: string): Promise<Message> {
+  const response = await fetch(`${API_BASE_URL}/api/chats/${chatId}/messages`, {
+    method: 'POST',
+    headers: authJsonHeaders(),
+    body: JSON.stringify({ content }),
+  })
+
+  if (!response.ok) {
+    let detail = `Failed to create user message: ${response.status}`
+    try {
+      const err = (await response.json()) as unknown
+      const parsed = formatErrorDetail(err)
+      if (parsed) detail = parsed
+    } catch {
+      // ignore parse errors
+    }
+    throw new Error(detail)
+  }
+
+  return (await response.json()) as Message
+}
+
 export async function sendChatMessage(payload: {
   message: string
   chat_id?: string
@@ -102,8 +143,9 @@ export async function sendChatMessage(payload: {
   if (!response.ok) {
     let detail = `Failed to send message: ${response.status}`
     try {
-      const err = (await response.json()) as { detail?: string }
-      if (err?.detail) detail = err.detail
+      const err = (await response.json()) as unknown
+      const parsed = formatErrorDetail(err)
+      if (parsed) detail = parsed
     } catch {
       // ignore parse errors
     }
@@ -137,8 +179,9 @@ export async function uploadAttachment(
   if (!response.ok) {
     let detail = `Failed to upload attachment: ${response.status}`
     try {
-      const err = (await response.json()) as { detail?: string }
-      if (err?.detail) detail = err.detail
+      const err = (await response.json()) as unknown
+      const parsed = formatErrorDetail(err)
+      if (parsed) detail = parsed
     } catch {
       // ignore parse errors
     }
