@@ -72,8 +72,8 @@ export async function getMessages(chatId: string): Promise<Message[]> {
 
 export async function sendChatMessage(payload: {
   message: string
-  history: Array<{ role: 'user' | 'assistant'; content: string }>
   chat_id?: string
+  temperature?: number
 }): Promise<SendChatResponse> {
   const response = await fetch(`${API_BASE_URL}/api/chat`, {
     method: 'POST',

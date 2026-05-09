@@ -16,6 +16,20 @@ def get_messages_for_chat(db: Session, chat_id: uuid.UUID) -> list[Message]:
     )
 
 
+def get_recent_messages_for_chat(db: Session, chat_id: uuid.UUID, limit: int) -> list[Message]:
+    if limit <= 0:
+        return []
+
+    recent = (
+        db.query(Message)
+        .filter(Message.chat_id == chat_id)
+        .order_by(Message.timestamp.desc(), Message.id.desc())
+        .limit(limit)
+        .all()
+    )
+    return list(reversed(recent))
+
+
 def create_message(db: Session, chat_id: uuid.UUID, role: str, content: str) -> Message:
     message = Message(chat_id=chat_id, role=role, content=content)
     db.add(message)

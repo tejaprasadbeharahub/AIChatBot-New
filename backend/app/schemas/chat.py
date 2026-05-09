@@ -14,6 +14,7 @@ class ChatMessage(BaseModel):
 
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1)
+    # Deprecated for normal flow. Backend derives thread memory from persisted messages.
     history: list[ChatMessage] = Field(default_factory=list)
     temperature: float = Field(default=0.2, ge=0.0, le=1.0)
     chat_id: uuid.UUID | None = None  # optional: persist to an existing chat

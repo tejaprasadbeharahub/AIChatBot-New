@@ -40,6 +40,7 @@ class Settings(BaseSettings):
     google_service_account_json: Optional[str] = None
 
     chroma_persist_dir: Optional[str] = None
+    chat_memory_turns: int = 5
 
     max_upload_mb: int = 20
     upload_dir: Optional[str] = None

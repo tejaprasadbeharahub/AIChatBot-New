@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { clearStoredToken, getStoredToken, googleLogin, login, register, renderGoogleSignInButton } from './api/auth'
 import { createChat, deleteChat, getChats, getMessages, sendChatMessage, updateChatTitle } from './api/chat'
@@ -51,11 +51,6 @@ function App() {
 
   const listRef = useRef<HTMLDivElement | null>(null)
   const googleButtonRef = useRef<HTMLDivElement | null>(null)
-
-  const turnsForApi = useMemo(
-    () => messages.map((message) => ({ role: message.role, content: message.content })),
-    [messages],
-  )
 
   useEffect(() => {
     const container = listRef.current
@@ -316,7 +311,6 @@ function App() {
 
       const response = await sendChatMessage({
         message: trimmed,
-        history: turnsForApi,
         chat_id: chatId,
       })
 
