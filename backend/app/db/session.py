@@ -5,6 +5,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.config import settings
+from app.models import attachment as _attachment_model  # noqa: F401
 from app.models import chat as _chat_model  # noqa: F401
 from app.models import message as _message_model  # noqa: F401
 from app.models import user as _user_model  # noqa: F401

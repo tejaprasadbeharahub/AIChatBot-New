@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
-import { clearStoredToken, getStoredToken, googleLogin, login, register, renderGoogleSignInButton } from './api/auth'
-import { createChat, deleteChat, getChats, getMessages, sendChatMessage, updateChatTitle } from './api/chat'
-import type { Chat, Message } from './types/chat'
+import { clearStoredToken, getStoredToken, googleLogin, renderGoogleSignInButton } from './api/auth'
+import { login, register } from './api/auth'
+import { createChat, deleteChat, downloadAttachment, extractAttachmentText, getChats, getMessages, sendChatMessage, uploadAttachment, updateChatTitle } from './api/chat'
+import type { Attachment, Chat, Message } from './types/chat'
+import { AttachmentPreview } from './components/chat/AttachmentPreview'
+import { AttachmentUploadButton } from './components/chat/AttachmentUploadButton'
 
 type ChatRole = 'user' | 'assistant'
 
@@ -10,6 +13,7 @@ type ChatMessage = {
   id: string
   role: ChatRole
   content: string
+  attachments: Attachment[]
 }
 
 function createId() {
@@ -21,6 +25,7 @@ function toUiMessages(items: Message[]): ChatMessage[] {
     id: item.id,
     role: item.role,
     content: item.content,
+    attachments: item.attachments || [],
   }))
 }
 
@@ -42,11 +47,13 @@ function App() {
   const [activeChatId, setActiveChatId] = useState<string | null>(null)
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
+  const [pendingAttachments, setPendingAttachments] = useState<{ file: File; type: string }[]>([])
 
   const [isBootstrapping, setIsBootstrapping] = useState(false)
   const [isLoadingChats, setIsLoadingChats] = useState(false)
   const [isLoadingMessages, setIsLoadingMessages] = useState(false)
   const [isSending, setIsSending] = useState(false)
+  const [isUploadingAttachment, setIsUploadingAttachment] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const listRef = useRef<HTMLDivElement | null>(null)
@@ -283,6 +290,21 @@ function App() {
     setError(null)
   }
 
+  async function handleAttachmentSelect(file: File, fileType: string) {
+    setError(null)
+    // Store pending attachment - will be uploaded after message is sent
+    setPendingAttachments((prev) => [...prev, { file, type: fileType }])
+  }
+
+  async function handleDownloadAttachment(attachmentId: string) {
+    try {
+      await downloadAttachment(attachmentId)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to download attachment'
+      setError(message)
+    }
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const trimmed = input.trim()
@@ -294,6 +316,7 @@ function App() {
       id: createId(),
       role: 'user',
       content: trimmed,
+      attachments: [],
     }
 
     setMessages((prev) => [...prev, userMessage])
@@ -309,15 +332,86 @@ function App() {
         setActiveChatId(chatId)
       }
 
+      // First, send the text message
+      const attachmentContext = pendingAttachments.map(
+        (item) => `${item.type}: ${item.file.name} (${item.file.type || 'unknown MIME'})`,
+      )
+
       const response = await sendChatMessage({
         message: trimmed,
         chat_id: chatId,
+        attachment_context: attachmentContext,
       })
+
+      const messageIdForAttachments = response.user_message_id
+
+      // If there are pending attachments, upload them to this message
+      if (pendingAttachments.length > 0) {
+        setIsUploadingAttachment(true)
+        const uploadedAttachments: Attachment[] = []
+        const summaryBlocks: string[] = []
+        const extractionErrors: string[] = []
+        const uploadErrors: string[] = []
+        const extractionEligibleTypes = new Set(['image', 'video', 'document', 'code', 'formula'])
+
+        for (const attachment of pendingAttachments) {
+          try {
+            console.log(`Uploading attachment: ${attachment.file.name} (${attachment.type})`)
+            const result = await uploadAttachment(messageIdForAttachments, attachment.type, attachment.file)
+            console.log(`Successfully uploaded: ${result.file_name}`)
+            uploadedAttachments.push({
+              id: result.id,
+              file_name: result.file_name,
+              file_type: result.file_type as any,
+              mime_type: result.mime_type,
+              file_size: result.file_size,
+              upload_timestamp: result.upload_timestamp,
+            })
+
+            if (extractionEligibleTypes.has(attachment.type)) {
+              try {
+                const extracted = await extractAttachmentText(result.id)
+                const summaryText = (extracted.summary_text || '').trim()
+                if (summaryText.length > 0) {
+                  summaryBlocks.push(`${result.file_name} [${extracted.attachment_type}]\n${summaryText}`)
+                }
+              } catch (ocrError) {
+                const extractionMsg = ocrError instanceof Error ? ocrError.message : 'Content extraction failed'
+                console.error(`Extraction failed for ${attachment.file.name}: ${extractionMsg}`)
+                extractionErrors.push(`${attachment.file.name}: ${extractionMsg}`)
+              }
+            }
+          } catch (attachError) {
+            const msg = attachError instanceof Error ? attachError.message : 'Attachment upload failed'
+            console.error(`Upload failed for ${attachment.file.name}: ${msg}`)
+            uploadErrors.push(`${attachment.file.name}: ${msg}`)
+          }
+        }
+
+        // Update the user message with attachments
+        setMessages((prev) =>
+          prev.map((msg) => (msg.id === userMessage.id ? { ...msg, attachments: uploadedAttachments } : msg))
+        )
+
+        if (uploadErrors.length > 0) {
+          setError(`Attachment upload issues:\n${uploadErrors.join('\n')}`)
+        } else if (extractionErrors.length > 0) {
+          setError(`Attachment extraction issues:\n${extractionErrors.join('\n')}`)
+        }
+
+        if (summaryBlocks.length > 0) {
+          response.reply = `I analyzed your uploaded file(s). Here is a clean summary:\n\n${summaryBlocks.join('\n\n---\n\n')}\n\n${response.reply}`
+        }
+
+        setPendingAttachments([])
+        setIsUploadingAttachment(false)
+      }
 
       const assistantMessage: ChatMessage = {
         id: createId(),
         role: 'assistant',
         content: response.reply,
+        attachments: [],
       }
       setMessages((prev) => [...prev, assistantMessage])
       setActiveChatId(response.chat_id)
@@ -448,7 +542,20 @@ function App() {
           ) : null}
           {messages.map((message) => (
             <article key={message.id} className={`bubble-row ${message.role === 'user' ? 'bubble-user' : 'bubble-assistant'}`}>
-              <div className="bubble">{message.content}</div>
+              <div className="bubble">
+                {message.content}
+                {message.attachments && message.attachments.length > 0 && (
+                  <div className="message-attachments">
+                    {message.attachments.map((attachment) => (
+                      <AttachmentPreview
+                        key={attachment.id}
+                        attachment={attachment}
+                        onDownload={handleDownloadAttachment}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
             </article>
           ))}
 
@@ -461,16 +568,48 @@ function App() {
 
         <footer className="chat-footer">
           <form onSubmit={handleSubmit} className="composer">
-            <textarea
-              value={input}
-              onChange={(event) => setInput(event.target.value)}
-              className="composer-input"
-              placeholder="Ask anything..."
-              rows={2}
-              disabled={isSending || isBootstrapping}
+            <div className="composer-input-wrapper">
+              <textarea
+                value={input}
+                onChange={(event) => setInput(event.target.value)}
+                className="composer-input"
+                placeholder="Ask anything..."
+                rows={2}
+                disabled={isSending || isBootstrapping || isUploadingAttachment}
+              />
+              {pendingAttachments.length > 0 && (
+                <div className="pending-attachments">
+                  {pendingAttachments.map((attachment, idx) => (
+                    <div key={idx} className="pending-attachment">
+                      <span>{attachment.file.name}</span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setPendingAttachments((prev) =>
+                            prev.filter((_, i) => i !== idx)
+                          )
+                        }
+                        className="remove-attachment"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <AttachmentUploadButton
+              onAttachmentSelect={handleAttachmentSelect}
+              disabled={isSending || isBootstrapping || isUploadingAttachment}
             />
-            <button type="submit" className="composer-send" disabled={isSending || isBootstrapping || input.trim().length === 0}>
-              {isSending ? 'Sending...' : 'Send'}
+            <button
+              type="submit"
+              className="composer-send"
+              disabled={
+                isSending || isBootstrapping || isUploadingAttachment || input.trim().length === 0
+              }
+            >
+              {isSending ? 'Sending...' : isUploadingAttachment ? 'Uploading...' : 'Send'}
             </button>
           </form>
           {error ? <p className="error-text">{error}</p> : null}

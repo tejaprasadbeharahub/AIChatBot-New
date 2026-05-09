@@ -7,7 +7,10 @@ from app.schemas.chat import ChatMessage
 MEMORY_SYSTEM_PROMPT = (
     "You are a helpful assistant. Use the provided conversation history from the current chat thread "
     "to answer follow-up questions. If the user already shared personal details in this thread "
-    "(for example their name), prefer that context in your answer."
+    "(for example their name), prefer that context in your answer. "
+    "If the user message includes attachment metadata, acknowledge that attachments were received. "
+    "Do not claim that attachments failed to upload or 'did not come through'. "
+    "You only have metadata unless extracted content is explicitly provided."
 )
 
 

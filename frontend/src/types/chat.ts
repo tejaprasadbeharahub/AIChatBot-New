@@ -14,10 +14,20 @@ export type ChatUpdateRequest = {
 
 export type Chat = ChatThread
 
+export type Attachment = {
+  id: string
+  file_name: string
+  file_type: 'image' | 'video' | 'code' | 'formula' | 'document'
+  mime_type: string
+  file_size: number
+  upload_timestamp: string
+}
+
 export type Message = {
   id: string
   chat_id: string
   role: 'user' | 'assistant'
   content: string
   timestamp: string
+  attachments: Attachment[]
 }

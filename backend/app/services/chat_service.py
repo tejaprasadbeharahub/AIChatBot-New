@@ -10,6 +10,15 @@ from app.services.chat_thread_service import create_chat
 from sqlalchemy.orm import Session
 
 
+def _build_model_input(message: str, attachment_context: list[str]) -> str:
+    if not attachment_context:
+        return message
+
+    lines = [message, "", "[Attachment metadata provided by user]"]
+    lines.extend(f"- {item}" for item in attachment_context)
+    return "\n".join(lines)
+
+
 def create_chat_response(request: ChatRequest, db: Session, current_user: User) -> ChatResponse:
     chat = None
     if request.chat_id:
@@ -18,7 +27,8 @@ def create_chat_response(request: ChatRequest, db: Session, current_user: User) 
         chat = create_chat(db, current_user.id)
 
     memory = get_thread_memory(db, chat_id=chat.id, max_turns=settings.chat_memory_turns)
-    create_message(db, chat.id, "user", request.message)
-    reply = generate_reply(message=request.message, history=memory, temperature=request.temperature)
+    user_message = create_message(db, chat.id, "user", request.message)
+    model_input = _build_model_input(request.message, request.attachment_context)
+    reply = generate_reply(message=model_input, history=memory, temperature=request.temperature)
     create_message(db, chat.id, "assistant", reply)
-    return ChatResponse(reply=reply, model=resolve_model_name(), chat_id=chat.id)
+    return ChatResponse(reply=reply, model=resolve_model_name(), chat_id=chat.id, user_message_id=user_message.id)

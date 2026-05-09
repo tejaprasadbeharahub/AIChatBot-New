@@ -26,3 +26,6 @@ class Message(Base):
     )
 
     chat: Mapped["Chat"] = relationship("Chat", back_populates="messages")  # noqa: F821
+    attachments: Mapped[list["Attachment"]] = relationship(
+        "Attachment", back_populates="message", cascade="all, delete-orphan"
+    )  # noqa: F821

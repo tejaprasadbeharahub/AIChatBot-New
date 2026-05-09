@@ -18,12 +18,14 @@ class ChatRequest(BaseModel):
     history: list[ChatMessage] = Field(default_factory=list)
     temperature: float = Field(default=0.2, ge=0.0, le=1.0)
     chat_id: uuid.UUID | None = None  # optional: persist to an existing chat
+    attachment_context: list[str] = Field(default_factory=list)
 
 
 class ChatResponse(BaseModel):
     reply: str
     model: str
     chat_id: uuid.UUID
+    user_message_id: uuid.UUID  # ID of the user's message for attachment uploads
 
 
 # ── Persisted chat (DB) ──────────────────────────────────────────────────────

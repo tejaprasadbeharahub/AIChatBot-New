@@ -26,6 +26,9 @@ chromadb
 
 pandas
 openpyxl
+pypdf
+python-docx
+opencv-python-headless
 
 google-api-python-client
 google-auth
