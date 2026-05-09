@@ -40,6 +40,10 @@ class Settings(BaseSettings):
     google_redirect_uri: Optional[str] = None
     google_service_account_json: Optional[str] = None
 
+    chroma_api_key: Optional[str] = None
+    chroma_tenant_id: Optional[str] = None
+    chroma_database: Optional[str] = None
+    chroma_host: Optional[str] = None
     chroma_persist_dir: Optional[str] = None
     chat_memory_turns: int = 5
 
@@ -50,6 +54,12 @@ class Settings(BaseSettings):
     image_gen_max_per_day: int = 50
     image_gen_timeout_seconds: int = 120
     image_storage_dir: Optional[str] = None
+
+    rag_chunk_size: int = 1200
+    rag_chunk_overlap: int = 200
+    rag_top_k: int = 5
+    rag_embedding_batch_size: int = 32
+    rag_max_chunks_per_document: int = 2000
 
 
 @lru_cache

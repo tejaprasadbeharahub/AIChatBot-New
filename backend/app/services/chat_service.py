@@ -7,6 +7,7 @@ from app.repositories.message_repo import create_message
 from app.schemas.chat import ChatRequest, ChatResponse
 from app.services.chat_memory_service import get_thread_memory
 from app.services.chat_thread_service import create_chat
+from app.services import pdf_rag_service
 from sqlalchemy.orm import Session
 
 
@@ -33,6 +34,22 @@ def create_chat_response(request: ChatRequest, db: Session, current_user: User) 
     memory = get_thread_memory(db, chat_id=chat.id, max_turns=settings.chat_memory_turns)
     user_message = create_message(db, chat.id, "user", normalized_user_message)
     model_input = _build_model_input(normalized_user_message, request.attachment_context)
+
+    try:
+        rag_matches = pdf_rag_service.retrieve_chat_context(
+            db,
+            user_id=current_user.id,
+            chat_id=chat.id,
+            query=normalized_user_message,
+            top_k=settings.rag_top_k,
+        )
+        rag_context = pdf_rag_service.build_rag_context_block(rag_matches)
+        if rag_context:
+            model_input = f"{model_input}\n\n{rag_context}"
+    except Exception:
+        # Gracefully continue even when retrieval fails.
+        pass
+
     reply = (generate_reply(message=model_input, history=memory, temperature=request.temperature) or "").strip()
     if not reply:
         reply = "I could not generate a response. Please try again."

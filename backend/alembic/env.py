@@ -17,6 +17,9 @@ from app.db.base import Base
 import app.models.user  # noqa: F401
 import app.models.chat  # noqa: F401
 import app.models.message  # noqa: F401
+import app.models.attachment  # noqa: F401
+import app.models.generated_image  # noqa: F401
+import app.models.pdf_document  # noqa: F401
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

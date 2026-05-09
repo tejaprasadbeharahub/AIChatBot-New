@@ -4,10 +4,14 @@ import { clearStoredToken, getStoredToken, googleLogin, renderGoogleSignInButton
 import { login, register } from './api/auth'
 import { createChat, createUserMessage, deleteChat, downloadAttachment, extractAttachmentText, getChats, getMessages, sendChatMessage, uploadAttachment, updateChatTitle } from './api/chat'
 import { generateImage, getImageStatus, deleteGeneratedImage } from './api/image_generation'
+import { getChatPdfDocuments, getPdfDocumentStatus, uploadPdfForChat } from './api/pdf_rag'
 import type { Attachment, Chat, Message, GeneratedImage } from './types/chat'
+import type { PdfDocument } from './types/pdf_rag'
 import { AttachmentPreview } from './components/chat/AttachmentPreview'
 import { AttachmentUploadButton } from './components/chat/AttachmentUploadButton'
 import { GeneratedImageDisplay } from './components/chat/GeneratedImageDisplay'
+import { PdfDocumentStatusList } from './components/chat/PdfDocumentStatusList'
+import { PdfUploadButton } from './components/chat/PdfUploadButton'
 import './components/chat/ImageGeneration.css'
 
 type ChatRole = 'user' | 'assistant'
@@ -52,12 +56,14 @@ function App() {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [pendingAttachments, setPendingAttachments] = useState<{ file: File; type: string }[]>([])
+  const [pdfDocuments, setPdfDocuments] = useState<PdfDocument[]>([])
 
   const [isBootstrapping, setIsBootstrapping] = useState(false)
   const [isLoadingChats, setIsLoadingChats] = useState(false)
   const [isLoadingMessages, setIsLoadingMessages] = useState(false)
   const [isSending, setIsSending] = useState(false)
   const [isUploadingAttachment, setIsUploadingAttachment] = useState(false)
+  const [isUploadingPdf, setIsUploadingPdf] = useState(false)
   const [isGeneratingImage, setIsGeneratingImage] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -90,14 +96,19 @@ function App() {
         if (allChats.length > 0) {
           const first = allChats[0]
           setActiveChatId(first.id)
-          const chatMessages = await getMessages(first.id)
+          const [chatMessages, chatPdfDocs] = await Promise.all([
+            getMessages(first.id),
+            getChatPdfDocuments(first.id),
+          ])
           if (cancelled) {
             return
           }
           setMessages(toUiMessages(chatMessages))
+          setPdfDocuments(chatPdfDocs)
         } else {
           setActiveChatId(null)
           setMessages([])
+          setPdfDocuments([])
         }
       } catch (requestError) {
         if (cancelled) {
@@ -216,8 +227,12 @@ function App() {
     setIsLoadingMessages(true)
     setError(null)
     try {
-      const history = await getMessages(chatId)
+      const [history, chatPdfDocs] = await Promise.all([
+        getMessages(chatId),
+        getChatPdfDocuments(chatId),
+      ])
       setMessages(toUiMessages(history))
+      setPdfDocuments(chatPdfDocs)
     } catch (requestError) {
       const message = requestError instanceof Error ? requestError.message : 'Could not load chat messages'
       setError(message)
@@ -232,6 +247,7 @@ function App() {
       const created = await createChat()
       setActiveChatId(created.id)
       setMessages([])
+      setPdfDocuments([])
       setInput('')
       await refreshChats(true)
     } catch (requestError) {
@@ -273,11 +289,16 @@ function App() {
       if (allChats.length > 0) {
         const first = allChats[0]
         setActiveChatId(first.id)
-        const history = await getMessages(first.id)
+        const [history, chatPdfDocs] = await Promise.all([
+          getMessages(first.id),
+          getChatPdfDocuments(first.id),
+        ])
         setMessages(toUiMessages(history))
+        setPdfDocuments(chatPdfDocs)
       } else {
         setActiveChatId(null)
         setMessages([])
+        setPdfDocuments([])
       }
     } catch (requestError) {
       const message = requestError instanceof Error ? requestError.message : 'Could not delete chat'
@@ -291,6 +312,7 @@ function App() {
     setChats([])
     setActiveChatId(null)
     setMessages([])
+    setPdfDocuments([])
     setInput('')
     setPassword('')
     setError(null)
@@ -308,6 +330,109 @@ function App() {
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to download attachment'
       setError(message)
+    }
+  }
+
+  async function refreshPdfDocuments(chatId: string) {
+    try {
+      const docs = await getChatPdfDocuments(chatId)
+      setPdfDocuments(docs)
+    } catch (requestError) {
+      const message = requestError instanceof Error ? requestError.message : 'Failed to load PDF documents'
+      setError(message)
+    }
+  }
+
+  async function pollPdfDocumentStatus(chatId: string, documentId: string) {
+    let attempts = 0
+    const maxAttempts = 180
+
+    const poll = async () => {
+      attempts += 1
+      try {
+        const latest = await getPdfDocumentStatus(documentId)
+        setPdfDocuments((prev) => prev.map((item) => (item.id === latest.id ? latest : item)))
+
+        if (latest.status === 'completed' || latest.status === 'failed' || attempts >= maxAttempts) {
+          if (attempts >= maxAttempts && latest.status !== 'completed' && latest.status !== 'failed') {
+            setError('PDF indexing timeout. You can ask questions later once processing finishes.')
+          }
+          return true
+        }
+      } catch {
+        if (attempts >= maxAttempts) {
+          return true
+        }
+      }
+      return false
+    }
+
+    const doneImmediately = await poll()
+    if (doneImmediately) {
+      await refreshPdfDocuments(chatId)
+      return
+    }
+
+    await new Promise<void>((resolve) => {
+      const interval = setInterval(async () => {
+        const done = await poll()
+        if (done) {
+          clearInterval(interval)
+          resolve()
+        }
+      }, 1000)
+    })
+
+    await refreshPdfDocuments(chatId)
+  }
+
+  async function handlePdfUpload(file: File) {
+    if (isSending || isGeneratingImage || isUploadingAttachment || isUploadingPdf || !token) {
+      return
+    }
+
+    if (!file.name.toLowerCase().endsWith('.pdf')) {
+      setError('Only PDF files are supported')
+      return
+    }
+
+    setError(null)
+    setIsUploadingPdf(true)
+
+    try {
+      let chatId = activeChatId
+      if (!chatId) {
+        const created = await createChat()
+        chatId = created.id
+        setActiveChatId(chatId)
+      }
+
+      const createdMessage = await createUserMessage(chatId, `Uploaded PDF: ${file.name}`)
+      const uploadedDoc = await uploadPdfForChat(chatId, createdMessage.id, file)
+
+      const uploadedMessage: ChatMessage = {
+        id: createdMessage.id,
+        role: 'user',
+        content: `Uploaded PDF: ${file.name}`,
+        attachments: [],
+      }
+      setMessages((prev) => {
+        const exists = prev.some((msg) => msg.id === uploadedMessage.id)
+        return exists ? prev : [...prev, uploadedMessage]
+      })
+
+      setPdfDocuments((prev) => {
+        const exists = prev.some((item) => item.id === uploadedDoc.id)
+        return exists ? prev : [uploadedDoc, ...prev]
+      })
+
+      await pollPdfDocumentStatus(chatId, uploadedDoc.id)
+      await refreshChats(true)
+    } catch (requestError) {
+      const message = requestError instanceof Error ? requestError.message : 'Failed to upload PDF'
+      setError(message)
+    } finally {
+      setIsUploadingPdf(false)
     }
   }
 
@@ -683,6 +808,7 @@ function App() {
             <h1>{activeChatId ? 'Conversation' : 'Start a new conversation'}</h1>
             <p className="subtitle">Your chats are saved to PostgreSQL and restored after login.</p>
           </div>
+          <PdfDocumentStatusList items={pdfDocuments} isUploading={isUploadingPdf} />
         </header>
 
         <div ref={listRef} className="message-list" aria-live="polite">
@@ -738,7 +864,7 @@ function App() {
                 className="composer-input"
                 placeholder="Ask anything..."
                 rows={2}
-                disabled={isSending || isBootstrapping || isUploadingAttachment || isGeneratingImage}
+                disabled={isSending || isBootstrapping || isUploadingAttachment || isUploadingPdf || isGeneratingImage}
               />
               {pendingAttachments.length > 0 && (
                 <div className="pending-attachments">
@@ -764,14 +890,18 @@ function App() {
             <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-end' }}>
               <AttachmentUploadButton
                 onAttachmentSelect={handleAttachmentSelect}
-                disabled={isSending || isBootstrapping || isUploadingAttachment || isGeneratingImage}
+                disabled={isSending || isBootstrapping || isUploadingAttachment || isUploadingPdf || isGeneratingImage}
+              />
+              <PdfUploadButton
+                onSelect={(file) => void handlePdfUpload(file)}
+                disabled={isSending || isBootstrapping || isUploadingAttachment || isUploadingPdf || isGeneratingImage}
               />
               <button
                 type="button"
                 className="composer-send"
                 onClick={() => void handleGenerateImageClick()}
                 disabled={
-                  isSending || isBootstrapping || isUploadingAttachment || isGeneratingImage || input.trim().length === 0
+                  isSending || isBootstrapping || isUploadingAttachment || isUploadingPdf || isGeneratingImage || input.trim().length === 0
                 }
               >
                 {isGeneratingImage ? 'Generating...' : 'Genrate Image'}
@@ -780,10 +910,10 @@ function App() {
                 type="submit"
                 className="composer-send"
                 disabled={
-                  isSending || isBootstrapping || isUploadingAttachment || isGeneratingImage || input.trim().length === 0
+                  isSending || isBootstrapping || isUploadingAttachment || isUploadingPdf || isGeneratingImage || input.trim().length === 0
                 }
               >
-                {isSending ? 'Sending...' : isUploadingAttachment ? 'Uploading...' : isGeneratingImage ? 'Generating...' : 'Send'}
+                {isSending ? 'Sending...' : isUploadingAttachment ? 'Uploading...' : isUploadingPdf ? 'Indexing PDF...' : isGeneratingImage ? 'Generating...' : 'Send'}
               </button>
             </div>
           </form>
