@@ -27,3 +27,10 @@
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+
+# Prevent service account key from being committed
+*.json
+!package.json
+!tsconfig.json
+!*.config.js

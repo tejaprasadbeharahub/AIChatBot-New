@@ -32,3 +32,6 @@ class Message(Base):
     generated_images: Mapped[list["GeneratedImage"]] = relationship(
         "GeneratedImage", back_populates="message", cascade="all, delete-orphan"
     )  # noqa: F821
+    sql_query_executions: Mapped[list["SQLQueryExecution"]] = relationship(
+        "SQLQueryExecution", back_populates="message"
+    )  # noqa: F821

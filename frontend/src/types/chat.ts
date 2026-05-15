@@ -1,4 +1,5 @@
 import type { GeneratedImage } from './image_generation'
+import type { SQLQueryExecution } from './nl_sql'
 
 export type ChatThread = {
   id: string

@@ -25,3 +25,9 @@ class User(Base):
     chats: Mapped[list["Chat"]] = relationship(  # noqa: F821
         "Chat", back_populates="user", cascade="all, delete-orphan"
     )
+    db_connections: Mapped[list["DBConnection"]] = relationship(  # noqa: F821
+        "DBConnection", back_populates="user", cascade="all, delete-orphan"
+    )
+    sql_query_executions: Mapped[list["SQLQueryExecution"]] = relationship(  # noqa: F821
+        "SQLQueryExecution", back_populates="user", cascade="all, delete-orphan"
+    )

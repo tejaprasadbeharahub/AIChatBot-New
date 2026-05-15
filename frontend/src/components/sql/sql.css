@@ -1,0 +1,356 @@
+/* ── Database Connection Manager ─────────────────────────────────────────── */
+
+.db-manager {
+  padding: 10px 0;
+}
+
+.db-manager-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.db-manager-header h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-family: 'Space Grotesk', sans-serif;
+  color: #1a2f4c;
+}
+
+.db-form {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 12px;
+  background: #f7fbff;
+  border: 1px solid #dbe5f5;
+  border-radius: 14px;
+}
+
+.db-label {
+  display: grid;
+  gap: 4px;
+  font-size: 0.88rem;
+  color: #40506a;
+}
+
+.db-label-flex {
+  flex: 1;
+}
+
+.db-label-sm {
+  width: 90px;
+}
+
+.db-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.db-input {
+  border: 1px solid #cfdaef;
+  border-radius: 10px;
+  padding: 7px 10px;
+  font-family: inherit;
+  font-size: 0.9rem;
+  background: #fff;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.db-input:focus {
+  outline: none;
+  border-color: #4a98d5;
+  box-shadow: 0 0 0 3px rgba(74, 152, 213, 0.14);
+}
+
+.db-connection-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.db-connection-item {
+  border: 1px solid #dfe8f7;
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: #fff;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+  transition: border-color 160ms ease, background 160ms ease;
+}
+
+.db-connection-item:hover {
+  border-color: #8fb9e8;
+  background: #f5f9ff;
+}
+
+.db-connection-item--selected {
+  border-color: #4a98d5;
+  background: linear-gradient(145deg, #e8f2ff 0%, #f5f9ff 100%);
+}
+
+.db-connection-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.db-connection-name {
+  font-weight: 700;
+  color: #1a2f4c;
+  font-size: 0.92rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.db-connection-meta {
+  font-size: 0.82rem;
+  color: #6a7f9d;
+}
+
+.db-connection-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.db-connection-actions .ghost-btn {
+  font-size: 0.8rem;
+  padding: 4px 8px;
+  height: auto;
+}
+
+/* ── SQL Result Card ─────────────────────────────────────────────────────── */
+
+.sql-result-card {
+  border: 1px solid #dfe8f7;
+  border-radius: 14px;
+  background: #fff;
+  overflow: hidden;
+  font-size: 0.9rem;
+  margin-top: 6px;
+}
+
+.sql-result-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: #f5f9ff;
+  border-bottom: 1px solid #e7edf8;
+}
+
+.sql-badge {
+  font-size: 0.78rem;
+  font-weight: 700;
+  font-family: 'Space Grotesk', sans-serif;
+  padding: 2px 8px;
+  border-radius: 99px;
+}
+
+.sql-badge--success {
+  background: #e3fde8;
+  color: #1a6b2e;
+  border: 1px solid #a8e6b6;
+}
+
+.sql-badge--error {
+  background: #fde8e8;
+  color: #8b1a1a;
+  border: 1px solid #f5b5b5;
+}
+
+.sql-badge--pending {
+  background: #fff7e0;
+  color: #7a5600;
+  border: 1px solid #f5d98d;
+}
+
+.sql-meta {
+  font-size: 0.8rem;
+  color: #6a7f9d;
+}
+
+.sql-query-block {
+  padding: 10px 12px;
+  border-bottom: 1px solid #eef3fa;
+}
+
+.sql-expand-toggle {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #266cb5;
+  padding: 0;
+  font-family: inherit;
+}
+
+.sql-expand-toggle:hover {
+  text-decoration: underline;
+}
+
+.sql-code-block {
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  background: #111827;
+  color: #e2e8f0;
+  border-radius: 10px;
+  font-family: 'Fira Code', 'Cascadia Mono', 'Consolas', monospace;
+  font-size: 0.82rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-x: auto;
+}
+
+.sql-explanation {
+  margin: 8px 0 0;
+  font-size: 0.85rem;
+  color: #5f6e84;
+}
+
+.sql-error-block {
+  padding: 8px 12px;
+  background: #fff5f5;
+  color: #8b1a1a;
+  font-size: 0.87rem;
+}
+
+.sql-error-label {
+  font-weight: 700;
+}
+
+.sql-table-wrapper {
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.sql-result-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.83rem;
+}
+
+.sql-result-table th {
+  background: #f1f6ff;
+  text-align: left;
+  padding: 6px 10px;
+  border-bottom: 1px solid #dce7f7;
+  white-space: nowrap;
+  font-family: 'Space Grotesk', sans-serif;
+  font-weight: 700;
+  color: #1a2f4c;
+}
+
+.sql-result-table td {
+  padding: 5px 10px;
+  border-bottom: 1px solid #eef3fa;
+  vertical-align: top;
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sql-result-table tr:hover td {
+  background: #f7fbff;
+}
+
+.sql-null {
+  color: #a0aec0;
+  font-style: italic;
+}
+
+.sql-empty-state {
+  padding: 10px 12px;
+  color: #6a7f9d;
+  font-size: 0.88rem;
+}
+
+.sql-pagination {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-top: 1px solid #eef3fa;
+}
+
+.sql-page-btn {
+  background: #fff;
+  border: 1px solid #cfdaef;
+  border-radius: 8px;
+  padding: 4px 12px;
+  font-size: 0.82rem;
+  font-family: 'Space Grotesk', sans-serif;
+  cursor: pointer;
+}
+
+.sql-page-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.sql-page-label {
+  font-size: 0.82rem;
+  color: #5f6e84;
+}
+
+/* ── NL-SQL Composer ─────────────────────────────────────────────────────── */
+
+.nl-sql-composer {
+  display: grid;
+  gap: 8px;
+}
+
+.nl-sql-connection-select {
+  border: 1px solid #cfdaef;
+  border-radius: 10px;
+  padding: 7px 10px;
+  font-family: inherit;
+  font-size: 0.9rem;
+  background: #fff;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.nl-sql-connection-select:focus {
+  outline: none;
+  border-color: #4a98d5;
+  box-shadow: 0 0 0 3px rgba(74, 152, 213, 0.14);
+}
+
+/* ── Chat mode toggle pill ──────────────────────────────────────────────── */
+
+.chat-mode-toggle {
+  display: flex;
+  gap: 6px;
+  padding: 4px 12px;
+  border-bottom: 1px solid #e7edf8;
+  background: #f9fbff;
+}
+
+.mode-pill {
+  border: 1px solid #d6e4f6;
+  background: #fff;
+  color: #3e516d;
+  border-radius: 99px;
+  padding: 4px 14px;
+  font-size: 0.84rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.mode-pill.active {
+  background: linear-gradient(135deg, #1f7abf 0%, #2fa57e 100%);
+  color: #fff;
+  border-color: transparent;
+}

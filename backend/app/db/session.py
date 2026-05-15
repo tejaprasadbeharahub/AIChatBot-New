@@ -11,6 +11,8 @@ from app.models import message as _message_model  # noqa: F401
 from app.models import user as _user_model  # noqa: F401
 from app.models import generated_image as _generated_image_model  # noqa: F401
 from app.models import pdf_document as _pdf_document_model  # noqa: F401
+from app.models import db_connection as _db_connection_model  # noqa: F401
+from app.models import sql_query_execution as _sql_query_execution_model  # noqa: F401
 
 
 def _make_engine():

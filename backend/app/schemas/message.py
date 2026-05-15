@@ -5,6 +5,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from app.schemas.generated_image import GeneratedImageRead
+from app.schemas.nl_sql import SQLQueryExecutionRead
 
 
 class AttachmentRef(BaseModel):
@@ -27,6 +28,7 @@ class MessageRead(BaseModel):
     timestamp: datetime
     attachments: list[AttachmentRef] = Field(default_factory=list)
     generated_images: list[GeneratedImageRead] = Field(default_factory=list)
+    sql_query_executions: list[SQLQueryExecutionRead] = Field(default_factory=list)
 
     model_config = {"from_attributes": True}
 

@@ -61,6 +61,14 @@ class Settings(BaseSettings):
     rag_embedding_batch_size: int = 32
     rag_max_chunks_per_document: int = 2000
 
+    sql_connection_encryption_key: Optional[str] = None
+    sql_default_row_limit: int = 100
+    sql_max_row_limit: int = 500
+    sql_query_timeout_seconds: int = 30
+    sql_generation_temperature: float = 0.0
+    sql_generation_model: Optional[str] = None
+    sql_generation_retry_count: int = 1
+
 
 @lru_cache
 def get_settings() -> Settings:

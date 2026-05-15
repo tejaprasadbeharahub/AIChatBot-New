@@ -7,6 +7,8 @@ sqlalchemy
 alembic
 asyncpg
 psycopg2-binary
+pymysql
+pyodbc
 
 python-jose[cryptography]
 passlib[bcrypt]
@@ -38,3 +40,4 @@ google-generativeai
 pytest
 pytest-asyncio
 ruff
+sqlparse

@@ -32,3 +32,6 @@ class Chat(Base):
     messages: Mapped[list["Message"]] = relationship(  # noqa: F821
         "Message", back_populates="chat", cascade="all, delete-orphan", order_by="Message.timestamp"
     )
+    sql_query_executions: Mapped[list["SQLQueryExecution"]] = relationship(  # noqa: F821
+        "SQLQueryExecution", back_populates="chat", cascade="all, delete-orphan"
+    )

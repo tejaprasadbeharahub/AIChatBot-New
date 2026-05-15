@@ -13,6 +13,12 @@ import { GeneratedImageDisplay } from './components/chat/GeneratedImageDisplay'
 import { PdfDocumentStatusList } from './components/chat/PdfDocumentStatusList'
 import { PdfUploadButton } from './components/chat/PdfUploadButton'
 import './components/chat/ImageGeneration.css'
+import { SQLQueryResult } from './components/sql/SQLQueryResult'
+import { NLSQLComposer } from './components/sql/NLSQLComposer'
+import { DBConnectionManager } from './components/sql/DBConnectionManager'
+import './components/sql/sql.css'
+import { executeNLSQL } from './api/nl_sql'
+import type { SQLQueryExecution } from './types/nl_sql'
 
 type ChatRole = 'user' | 'assistant'
 
@@ -23,6 +29,7 @@ type ChatMessage = {
   attachments: Attachment[]
   generated_images?: GeneratedImage[]
   alignment: 'right' | 'left'
+  sql_query_executions?: SQLQueryExecution[]
 }
 
 function createId() {
@@ -36,7 +43,8 @@ function toUiMessages(items: Message[]): ChatMessage[] {
     content: item.content,
     attachments: item.attachments || [],
     generated_images: item.generated_images || [],
-    alignment: item.role === 'user' ? 'right' : item.generated_images && item.generated_images.length > 0 ? 'left' : 'left', // Explicit alignment
+    alignment: item.role === 'user' ? 'right' : 'left',
+    sql_query_executions: (item as Message & { sql_query_executions?: SQLQueryExecution[] }).sql_query_executions ?? [],
   }))
 }
 
@@ -68,6 +76,9 @@ function App() {
   const [isUploadingAttachment, setIsUploadingAttachment] = useState(false)
   const [isUploadingPdf, setIsUploadingPdf] = useState(false)
   const [isGeneratingImage, setIsGeneratingImage] = useState(false)
+  const [isRunningNLSQL, setIsRunningNLSQL] = useState(false)
+  const [chatMode, setChatMode] = useState<'chat' | 'database'>('chat')
+  const [showDBManager, setShowDBManager] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const listRef = useRef<HTMLDivElement | null>(null)
@@ -644,6 +655,46 @@ function App() {
     }
   }
 
+  async function handleNLSQLQuery(connectionId: string, question: string) {
+    if (isRunningNLSQL || isSending || !token) return
+    setIsRunningNLSQL(true)
+    setError(null)
+
+    const userMsg: ChatMessage = {
+      id: createId(),
+      role: 'user',
+      content: question,
+      attachments: [],
+      alignment: 'right',
+    }
+    setMessages((prev) => [...prev, userMsg])
+
+    try {
+      const result = await executeNLSQL({
+        connection_id: connectionId,
+        question,
+        chat_id: activeChatId ?? undefined,
+      })
+
+      setActiveChatId(result.chat_id)
+
+      const assistantMsg: ChatMessage = {
+        id: result.assistant_message_id,
+        role: 'assistant',
+        content: result.reply,
+        attachments: [],
+        alignment: 'left',
+        sql_query_executions: [result.execution],
+      }
+      setMessages((prev) => [...prev, assistantMsg])
+      await refreshChats(true)
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Database query failed')
+    } finally {
+      setIsRunningNLSQL(false)
+    }
+  }
+
   async function handleGenerateImageClick() {
     const trimmed = input.trim()
     if (!trimmed || isSending || isGeneratingImage || !token) {
@@ -788,6 +839,25 @@ function App() {
           </button>
         </div>
 
+        <button
+          type="button"
+          className="ghost-btn"
+          style={{ marginTop: '8px' }}
+          onClick={() => setShowDBManager((v) => !v)}
+        >
+          {showDBManager ? '✕ Close DB Manager' : '🗄 Databases'}
+        </button>
+        {showDBManager && (
+          <div style={{ marginTop: '8px', overflow: 'auto', maxHeight: '340px' }}>
+            <DBConnectionManager
+              selectedConnectionId={null}
+              onConnectionSelected={() => {
+                setChatMode('database')
+                setShowDBManager(false)
+              }}
+            />
+          </div>
+        )}
         <div className="chat-list" aria-live="polite">
           {isLoadingChats ? <p className="meta-text">Refreshing chats...</p> : null}
           {chats.length === 0 ? <p className="meta-text">No previous chats yet.</p> : null}
@@ -828,6 +898,18 @@ function App() {
                   <div className="bubble">{message.content}</div>
                 </article>
               )}
+              {message.role === 'assistant' && message.content && (!message.generated_images || message.generated_images.length === 0) && (
+                <article key={`${message.id}-text`} className="bubble-row bubble-assistant">
+                  <div className="bubble">
+                    <span>{message.content}</span>
+                    {message.sql_query_executions && message.sql_query_executions.length > 0 &&
+                      message.sql_query_executions.map((exec) => (
+                        <SQLQueryResult key={exec.id} execution={exec} />
+                      ))
+                    }
+                  </div>
+                </article>
+              )}
               {message.generated_images && message.generated_images.length > 0 && (
                 message.generated_images.map((image) => (
                   <article key={`${message.id}-image-${image.id}`} className="bubble-row bubble-assistant"> {/* Rendered image on the left */}
@@ -849,9 +931,36 @@ function App() {
               <div className="bubble bubble-loading">Thinking</div>
             </article>
           ) : null}
+          {isRunningNLSQL ? (
+            <article className="bubble-row bubble-assistant">
+              <div className="bubble bubble-loading">Querying database</div>
+            </article>
+          ) : null}
         </div>
 
         <footer className="chat-footer">
+          <div className="chat-mode-toggle">
+            <button
+              type="button"
+              className={chatMode === 'chat' ? 'mode-pill active' : 'mode-pill'}
+              onClick={() => setChatMode('chat')}
+            >💬 Chat</button>
+            <button
+              type="button"
+              className={chatMode === 'database' ? 'mode-pill active' : 'mode-pill'}
+              onClick={() => setChatMode('database')}
+            >🗄 Database</button>
+          </div>
+          {chatMode === 'database' ? (
+            <div style={{ padding: '10px 12px' }}>
+              <NLSQLComposer
+                onSubmit={(cid, q) => void handleNLSQLQuery(cid, q)}
+                isLoading={isRunningNLSQL}
+                activeChatId={activeChatId}
+                disabled={isSending || isBootstrapping}
+              />
+            </div>
+          ) : (
           <form onSubmit={handleSubmit} className="composer">
             <div className="composer-input-wrapper">
               <textarea
@@ -893,16 +1002,6 @@ function App() {
                 disabled={isSending || isBootstrapping || isUploadingAttachment || isUploadingPdf || isGeneratingImage}
               />
               <button
-                type="button"
-                className="composer-send"
-                onClick={() => void handleGenerateImageClick()}
-                disabled={
-                  isSending || isBootstrapping || isUploadingAttachment || isUploadingPdf || isGeneratingImage || input.trim().length === 0
-                }
-              >
-                {isGeneratingImage ? 'Generating...' : 'Genrate Image'}
-              </button>
-              <button
                 type="submit"
                 className="composer-send"
                 disabled={
@@ -911,8 +1010,19 @@ function App() {
               >
                 {isSending ? 'Sending...' : isUploadingAttachment ? 'Uploading...' : isUploadingPdf ? 'Indexing PDF...' : isGeneratingImage ? 'Generating...' : 'Send'}
               </button>
+              <button
+                type="button"
+                className="composer-send"
+                onClick={() => void handleGenerateImageClick()}
+                disabled={
+                  isSending || isBootstrapping || isUploadingAttachment || isUploadingPdf || isGeneratingImage || input.trim().length === 0
+                }
+              >
+                {isGeneratingImage ? 'Generating...' : 'Generate Image'}
+              </button>
             </div>
           </form>
+          )}
           {error ? <p className="error-text">{error}</p> : null}
         </footer>
       </section>

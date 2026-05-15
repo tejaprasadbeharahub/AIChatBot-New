@@ -10,7 +10,11 @@ from app.repositories.chat_repo import touch_chat
 def get_messages_for_chat(db: Session, chat_id: uuid.UUID) -> list[Message]:
     return (
         db.query(Message)
-        .options(selectinload(Message.attachments), selectinload(Message.generated_images))
+        .options(
+            selectinload(Message.attachments),
+            selectinload(Message.generated_images),
+            selectinload(Message.sql_query_executions),
+        )
         .filter(Message.chat_id == chat_id)
         .order_by(Message.timestamp.asc())
         .all()
@@ -23,7 +27,11 @@ def get_recent_messages_for_chat(db: Session, chat_id: uuid.UUID, limit: int) ->
 
     recent = (
         db.query(Message)
-        .options(selectinload(Message.attachments), selectinload(Message.generated_images))
+        .options(
+            selectinload(Message.attachments),
+            selectinload(Message.generated_images),
+            selectinload(Message.sql_query_executions),
+        )
         .filter(Message.chat_id == chat_id)
         .order_by(Message.timestamp.desc(), Message.id.desc())
         .limit(limit)
