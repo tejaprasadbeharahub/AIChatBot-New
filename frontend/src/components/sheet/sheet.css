@@ -1,0 +1,457 @@
+/* ========================================================================
+   Sheet Agent — component styles
+   ======================================================================== */
+
+/* ---- Upload / Toolbar buttons ---- */
+.sheet-upload-btn,
+.sheet-gsheet-btn {
+  padding: 0.4rem 0.85rem;
+  border-radius: 0.4rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid #4f46e5;
+  background: transparent;
+  color: #4f46e5;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+.sheet-upload-btn:hover:not(:disabled),
+.sheet-gsheet-btn:hover:not(:disabled) {
+  background: #4f46e5;
+  color: #fff;
+}
+.sheet-upload-btn:disabled,
+.sheet-gsheet-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ---- Google Sheet connect panel ---- */
+.sheet-gsheet-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(15, 23, 42, 0.42);
+  backdrop-filter: blur(3px);
+}
+.sheet-gsheet-panel {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.6rem;
+  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.22);
+  padding: 1rem;
+  width: min(100%, 420px);
+  max-height: min(80vh, 560px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.sheet-gsheet-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.sheet-gsheet-title {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: #111;
+}
+.sheet-gsheet-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1rem;
+  color: #6b7280;
+  padding: 0.1rem 0.3rem;
+}
+.sheet-gsheet-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.78rem;
+  color: #374151;
+  font-weight: 500;
+}
+.sheet-gsheet-input {
+  padding: 0.45rem 0.65rem;
+  border: 1px solid #d1d5db;
+  border-radius: 0.35rem;
+  font-size: 0.82rem;
+  color: #111;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.sheet-gsheet-input:focus {
+  border-color: #4f46e5;
+}
+.sheet-gsheet-error {
+  font-size: 0.78rem;
+  color: #dc2626;
+}
+.sheet-gsheet-actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+.sheet-gsheet-cancel,
+.sheet-gsheet-connect {
+  padding: 0.4rem 0.85rem;
+  border-radius: 0.35rem;
+  font-size: 0.82rem;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid;
+  transition: background 0.15s, color 0.15s;
+}
+.sheet-gsheet-cancel {
+  border-color: #d1d5db;
+  background: transparent;
+  color: #374151;
+}
+.sheet-gsheet-cancel:hover:not(:disabled) {
+  background: #f3f4f6;
+}
+.sheet-gsheet-connect {
+  border-color: #4f46e5;
+  background: #4f46e5;
+  color: #fff;
+}
+.sheet-gsheet-connect:hover:not(:disabled) {
+  background: #4338ca;
+}
+.sheet-gsheet-connect:disabled,
+.sheet-gsheet-cancel:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ---- Datasource list ---- */
+.sheet-ds-list {
+  margin-bottom: 0.75rem;
+}
+.sheet-ds-list-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.4rem;
+}
+.sheet-ds-title {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.sheet-ds-uploading {
+  font-size: 0.75rem;
+  color: #4f46e5;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+.sheet-ds-items {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.sheet-ds-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.45rem;
+  background: #fafafa;
+  transition: border-color 0.15s, background 0.15s;
+}
+.sheet-ds-card[role="button"] {
+  cursor: pointer;
+}
+.sheet-ds-card[role="button"]:hover {
+  background: #f0f0ff;
+  border-color: #a5b4fc;
+}
+.sheet-ds-card.selected {
+  background: #ede9fe;
+  border-color: #4f46e5;
+}
+.sheet-ds-icon {
+  font-size: 1.2rem;
+  flex-shrink: 0;
+  margin-top: 0.1rem;
+}
+.sheet-ds-main {
+  flex: 1;
+  min-width: 0;
+}
+.sheet-ds-name {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #111;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sheet-ds-meta {
+  font-size: 0.74rem;
+  color: #6b7280;
+  margin-top: 0.1rem;
+}
+.sheet-ds-cols {
+  font-size: 0.72rem;
+  color: #9ca3af;
+  margin-top: 0.1rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sheet-ds-error {
+  font-size: 0.74rem;
+  color: #dc2626;
+  margin-top: 0.1rem;
+}
+.sheet-ds-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}
+.sheet-ds-status {
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.1rem 0.45rem;
+  border-radius: 9999px;
+}
+.sheet-ds-status.ready    { background: #d1fae5; color: #065f46; }
+.sheet-ds-status.processing { background: #dbeafe; color: #1e40af; }
+.sheet-ds-status.failed   { background: #fee2e2; color: #991b1b; }
+.sheet-ds-status.pending  { background: #f3f4f6; color: #6b7280; }
+.sheet-ds-delete {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.75rem;
+  color: #9ca3af;
+  padding: 0.1rem 0.25rem;
+  transition: color 0.15s;
+}
+.sheet-ds-delete:hover { color: #dc2626; }
+
+/* ---- Sheet Composer ---- */
+.sheet-composer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.65rem 0.75rem;
+  background: #f8f7ff;
+  border: 1px solid #c7d2fe;
+  border-radius: 0.6rem;
+  margin-bottom: 0.5rem;
+}
+.sheet-composer-context {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.82rem;
+}
+.sheet-composer-icon { font-size: 1rem; flex-shrink: 0; }
+.sheet-composer-dsname {
+  font-weight: 600;
+  color: #3730a3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 180px;
+}
+.sheet-composer-meta { color: #6b7280; font-size: 0.74rem; }
+.sheet-composer-clear {
+  margin-left: auto;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #9ca3af;
+  font-size: 0.85rem;
+  padding: 0.1rem 0.25rem;
+}
+.sheet-composer-clear:hover { color: #374151; }
+
+.sheet-composer-samples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+.sheet-sample-pill {
+  font-size: 0.73rem;
+  padding: 0.2rem 0.6rem;
+  border: 1px solid #c7d2fe;
+  border-radius: 9999px;
+  background: #fff;
+  color: #4f46e5;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.sheet-sample-pill:hover:not(:disabled) { background: #4f46e5; color: #fff; }
+.sheet-sample-pill:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.sheet-composer-input-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-end;
+}
+.sheet-composer-textarea {
+  flex: 1;
+  resize: none;
+  padding: 0.45rem 0.65rem;
+  border: 1px solid #c7d2fe;
+  border-radius: 0.4rem;
+  font-size: 0.85rem;
+  color: #111;
+  background: #fff;
+  outline: none;
+  transition: border-color 0.15s;
+  font-family: inherit;
+}
+.sheet-composer-textarea:focus { border-color: #4f46e5; }
+.sheet-composer-send {
+  padding: 0.45rem 0.9rem;
+  background: #4f46e5;
+  color: #fff;
+  border: none;
+  border-radius: 0.4rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+  white-space: nowrap;
+}
+.sheet-composer-send:hover:not(:disabled) { background: #4338ca; }
+.sheet-composer-send:disabled { opacity: 0.4; cursor: not-allowed; }
+.sheet-composer-error { font-size: 0.78rem; color: #dc2626; }
+
+/* ---- Sheet Query Result card ---- */
+.sheet-result-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 0.55rem;
+  overflow: hidden;
+  font-size: 0.85rem;
+  margin-top: 0.5rem;
+  width: 100%;
+}
+.sheet-result-header {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.5rem 0.85rem;
+  background: #f0f0ff;
+  border-bottom: 1px solid #e5e7eb;
+}
+.sheet-result-badge {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.15rem 0.5rem;
+  border-radius: 9999px;
+  background: #4f46e5;
+  color: #fff;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.sheet-result-meta {
+  font-size: 0.75rem;
+  color: #6b7280;
+}
+.sheet-result-answer {
+  padding: 0.75rem 0.85rem;
+  white-space: pre-wrap;
+  color: #111;
+  line-height: 1.55;
+}
+
+/* Table */
+.sheet-table-wrapper {
+  overflow-x: auto;
+  border-top: 1px solid #e5e7eb;
+  max-width: 100%;
+}
+.sheet-result-table {
+  width: max(100%, fit-content);
+  border-collapse: collapse;
+  font-size: 0.8rem;
+  table-layout: auto;
+}
+.sheet-result-table th {
+  background: #f3f4f6;
+  color: #374151;
+  font-weight: 600;
+  padding: 0.45rem 0.65rem;
+  text-align: left;
+  border-bottom: 1px solid #e5e7eb;
+  white-space: nowrap;
+}
+.sheet-result-table td {
+  padding: 0.4rem 0.65rem;
+  border-bottom: 1px solid #f3f4f6;
+  color: #111;
+  min-width: 120px;
+  max-width: 320px;
+  vertical-align: top;
+  white-space: normal;
+  word-break: break-word;
+}
+.sheet-result-table tr:last-child td { border-bottom: none; }
+.sheet-result-table tr:nth-child(even) { background: #fafafa; }
+.sheet-null { color: #9ca3af; font-style: italic; }
+
+/* Pagination */
+.sheet-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 0.5rem;
+  border-top: 1px solid #e5e7eb;
+  background: #fafafa;
+}
+.sheet-page-btn {
+  padding: 0.25rem 0.65rem;
+  border: 1px solid #d1d5db;
+  border-radius: 0.3rem;
+  background: #fff;
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.sheet-page-btn:hover:not(:disabled) { background: #f3f4f6; }
+.sheet-page-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.sheet-page-label { font-size: 0.78rem; color: #6b7280; }
+
+@media (max-width: 640px) {
+  .sheet-gsheet-overlay {
+    align-items: flex-end;
+    padding: 0.75rem;
+  }
+
+  .sheet-gsheet-panel {
+    width: 100%;
+    max-height: 85vh;
+    border-radius: 0.85rem;
+  }
+
+  .sheet-result-header {
+    flex-wrap: wrap;
+  }
+
+  .sheet-result-table th,
+  .sheet-result-table td {
+    min-width: 96px;
+    padding: 0.38rem 0.52rem;
+  }
+}

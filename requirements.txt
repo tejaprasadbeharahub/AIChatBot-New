@@ -23,11 +23,13 @@ langchain
 langchain-openai
 langchain-google-genai
 langgraph
+langchain-experimental
 openai
 chromadb
 
 pandas
 openpyxl
+tabulate
 pypdf
 python-docx
 opencv-python-headless

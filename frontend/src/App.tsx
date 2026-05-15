@@ -2,12 +2,11 @@ import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { clearStoredToken, getStoredToken, googleLogin, renderGoogleSignInButton } from './api/auth'
 import { login, register } from './api/auth'
-import { createChat, createUserMessage, deleteChat, downloadAttachment, extractAttachmentText, getChats, getMessages, sendChatMessage, uploadAttachment, updateChatTitle } from './api/chat'
+import { createChat, createUserMessage, deleteChat, extractAttachmentText, getChats, getMessages, sendChatMessage, uploadAttachment, updateChatTitle } from './api/chat'
 import { generateImage, getImageStatus, deleteGeneratedImage } from './api/image_generation'
 import { getChatPdfDocuments, getPdfDocumentStatus, uploadPdfForChat } from './api/pdf_rag'
 import type { Attachment, Chat, Message, GeneratedImage } from './types/chat'
 import type { PdfDocument } from './types/pdf_rag'
-import { AttachmentPreview } from './components/chat/AttachmentPreview'
 import { AttachmentUploadButton } from './components/chat/AttachmentUploadButton'
 import { GeneratedImageDisplay } from './components/chat/GeneratedImageDisplay'
 import { PdfDocumentStatusList } from './components/chat/PdfDocumentStatusList'
@@ -19,6 +18,55 @@ import { DBConnectionManager } from './components/sql/DBConnectionManager'
 import './components/sql/sql.css'
 import { executeNLSQL } from './api/nl_sql'
 import type { SQLQueryExecution } from './types/nl_sql'
+import { SheetUploadButton } from './components/sheet/SheetUploadButton'
+import { GoogleSheetConnect } from './components/sheet/GoogleSheetConnect'
+import { SheetDatasourceList } from './components/sheet/SheetDatasourceList'
+import { SheetComposer } from './components/sheet/SheetComposer'
+import { SheetQueryResult } from './components/sheet/SheetQueryResult'
+import './components/sheet/sheet.css'
+import { listChatDatasources, uploadSheetFile } from './api/sheet_agent'
+import type { SheetDatasource, SheetQueryResponse } from './types/sheet_agent'
+
+const SHEET_RESULT_MARKER_PREFIX = '\n\n[SHEET_RESULT]'
+
+function parsePersistedSheetResult(rawContent: string): { cleanContent: string; sheetResult: SheetQueryResponse | null } {
+  const markerIndex = rawContent.lastIndexOf(SHEET_RESULT_MARKER_PREFIX)
+  if (markerIndex === -1) {
+    return { cleanContent: rawContent, sheetResult: null }
+  }
+
+  const cleanContent = rawContent.slice(0, markerIndex)
+  const markerPayload = rawContent.slice(markerIndex + SHEET_RESULT_MARKER_PREFIX.length).trim()
+
+  try {
+    const parsed = JSON.parse(markerPayload) as {
+      datasource_id?: string
+      question?: string
+      answer?: string
+      table?: SheetQueryResponse['table']
+      execution_duration_ms?: number
+    }
+
+    if (!parsed.answer || !parsed.datasource_id) {
+      return { cleanContent: rawContent, sheetResult: null }
+    }
+
+    const hydrated: SheetQueryResponse = {
+      chat_id: '',
+      user_message_id: '',
+      assistant_message_id: '',
+      datasource_id: parsed.datasource_id,
+      question: parsed.question ?? '',
+      answer: parsed.answer,
+      table: parsed.table ?? null,
+      execution_duration_ms: parsed.execution_duration_ms ?? 0,
+    }
+
+    return { cleanContent, sheetResult: hydrated }
+  } catch {
+    return { cleanContent: rawContent, sheetResult: null }
+  }
+}
 
 type ChatRole = 'user' | 'assistant'
 
@@ -28,8 +76,9 @@ type ChatMessage = {
   content: string
   attachments: Attachment[]
   generated_images?: GeneratedImage[]
-  alignment: 'right' | 'left'
+  alignment?: 'right' | 'left'
   sql_query_executions?: SQLQueryExecution[]
+  sheet_result?: SheetQueryResponse
 }
 
 function createId() {
@@ -37,15 +86,22 @@ function createId() {
 }
 
 function toUiMessages(items: Message[]): ChatMessage[] {
-  return items.map((item) => ({
-    id: item.id,
-    role: item.role, // Preserve the original role for alignment
-    content: item.content,
-    attachments: item.attachments || [],
-    generated_images: item.generated_images || [],
-    alignment: item.role === 'user' ? 'right' : 'left',
-    sql_query_executions: (item as Message & { sql_query_executions?: SQLQueryExecution[] }).sql_query_executions ?? [],
-  }))
+  return items.map((item) => {
+    const parsedSheet = item.role === 'assistant'
+      ? parsePersistedSheetResult(item.content)
+      : { cleanContent: item.content, sheetResult: null }
+
+    return {
+      id: item.id,
+      role: item.role, // Preserve the original role for alignment
+      content: parsedSheet.cleanContent,
+      attachments: item.attachments || [],
+      generated_images: item.generated_images || [],
+      alignment: item.role === 'user' ? 'right' : 'left',
+      sql_query_executions: (item as Message & { sql_query_executions?: SQLQueryExecution[] }).sql_query_executions ?? [],
+      sheet_result: parsedSheet.sheetResult ?? undefined,
+    }
+  })
 }
 
 function formatChatTitle(chat: Chat): string {
@@ -77,9 +133,14 @@ function App() {
   const [isUploadingPdf, setIsUploadingPdf] = useState(false)
   const [isGeneratingImage, setIsGeneratingImage] = useState(false)
   const [isRunningNLSQL, setIsRunningNLSQL] = useState(false)
-  const [chatMode, setChatMode] = useState<'chat' | 'database'>('chat')
+  const [chatMode, setChatMode] = useState<'chat' | 'database' | 'sheets'>('chat')
   const [showDBManager, setShowDBManager] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const [sheetDatasources, setSheetDatasources] = useState<SheetDatasource[]>([])
+  const [selectedDatasource, setSelectedDatasource] = useState<SheetDatasource | null>(null)
+  const [isUploadingSheet, setIsUploadingSheet] = useState(false)
+  const [isQueryingSheet, setIsQueryingSheet] = useState(false)
 
   const listRef = useRef<HTMLDivElement | null>(null)
   const googleButtonRef = useRef<HTMLDivElement | null>(null)
@@ -110,25 +171,48 @@ function App() {
         if (allChats.length > 0) {
           const first = allChats[0]
           setActiveChatId(first.id)
-          const [chatMessages, chatPdfDocs] = await Promise.all([
-            getMessages(first.id),
-            getChatPdfDocuments(first.id),
-          ])
+          const chatMessages = await getMessages(first.id)
           if (cancelled) {
             return
           }
           setMessages(toUiMessages(chatMessages))
-          setPdfDocuments(chatPdfDocs)
+
+          const [pdfResult, datasourceResult] = await Promise.allSettled([
+            getChatPdfDocuments(first.id),
+            listChatDatasources(first.id),
+          ])
+          if (cancelled) {
+            return
+          }
+
+          if (pdfResult.status === 'fulfilled') {
+            setPdfDocuments(pdfResult.value)
+          } else {
+            setPdfDocuments([])
+            console.warn('Failed to load PDF documents during bootstrap:', pdfResult.reason)
+          }
+
+          if (datasourceResult.status === 'fulfilled') {
+            setSheetDatasources(datasourceResult.value)
+          } else {
+            setSheetDatasources([])
+            console.warn('Failed to load sheet datasources during bootstrap:', datasourceResult.reason)
+          }
+
+          setSelectedDatasource(null)
         } else {
           setActiveChatId(null)
           setMessages([])
           setPdfDocuments([])
+          setSheetDatasources([])
+          setSelectedDatasource(null)
         }
       } catch (requestError) {
         if (cancelled) {
           return
         }
-        const message = requestError instanceof Error ? requestError.message : 'Could not load chats'
+        const rawMessage = requestError instanceof Error ? requestError.message : 'Could not load chats'
+        const message = rawMessage.toLowerCase() === 'failed to fetch' ? null : rawMessage
         setError(message)
       } finally {
         if (!cancelled) {
@@ -238,17 +322,34 @@ function App() {
 
   async function handleChatSelect(chatId: string) {
     setActiveChatId(chatId)
+    setSelectedDatasource(null)
     setIsLoadingMessages(true)
     setError(null)
     try {
-      const [history, chatPdfDocs] = await Promise.all([
-        getMessages(chatId),
-        getChatPdfDocuments(chatId),
-      ])
+      const history = await getMessages(chatId)
       setMessages(toUiMessages(history))
-      setPdfDocuments(chatPdfDocs)
+
+      const [pdfResult, datasourceResult] = await Promise.allSettled([
+        getChatPdfDocuments(chatId),
+        listChatDatasources(chatId),
+      ])
+
+      if (pdfResult.status === 'fulfilled') {
+        setPdfDocuments(pdfResult.value)
+      } else {
+        setPdfDocuments([])
+        console.warn('Failed to load PDF documents for chat:', pdfResult.reason)
+      }
+
+      if (datasourceResult.status === 'fulfilled') {
+        setSheetDatasources(datasourceResult.value)
+      } else {
+        setSheetDatasources([])
+        console.warn('Failed to load sheet datasources for chat:', datasourceResult.reason)
+      }
     } catch (requestError) {
-      const message = requestError instanceof Error ? requestError.message : 'Could not load chat messages'
+      const rawMessage = requestError instanceof Error ? requestError.message : 'Could not load chat messages'
+      const message = rawMessage.toLowerCase() === 'failed to fetch' ? null : rawMessage
       setError(message)
     } finally {
       setIsLoadingMessages(false)
@@ -262,6 +363,8 @@ function App() {
       setActiveChatId(created.id)
       setMessages([])
       setPdfDocuments([])
+      setSheetDatasources([])
+      setSelectedDatasource(null)
       setInput('')
       await refreshChats(true)
     } catch (requestError) {
@@ -303,16 +406,35 @@ function App() {
       if (allChats.length > 0) {
         const first = allChats[0]
         setActiveChatId(first.id)
-        const [history, chatPdfDocs] = await Promise.all([
-          getMessages(first.id),
-          getChatPdfDocuments(first.id),
-        ])
+        const history = await getMessages(first.id)
         setMessages(toUiMessages(history))
-        setPdfDocuments(chatPdfDocs)
+
+        const [pdfResult, datasourceResult] = await Promise.allSettled([
+          getChatPdfDocuments(first.id),
+          listChatDatasources(first.id),
+        ])
+
+        if (pdfResult.status === 'fulfilled') {
+          setPdfDocuments(pdfResult.value)
+        } else {
+          setPdfDocuments([])
+          console.warn('Failed to load PDF documents after deleting chat:', pdfResult.reason)
+        }
+
+        if (datasourceResult.status === 'fulfilled') {
+          setSheetDatasources(datasourceResult.value)
+        } else {
+          setSheetDatasources([])
+          console.warn('Failed to load sheet datasources after deleting chat:', datasourceResult.reason)
+        }
+
+        setSelectedDatasource(null)
       } else {
         setActiveChatId(null)
         setMessages([])
         setPdfDocuments([])
+        setSheetDatasources([])
+        setSelectedDatasource(null)
       }
     } catch (requestError) {
       const message = requestError instanceof Error ? requestError.message : 'Could not delete chat'
@@ -336,15 +458,6 @@ function App() {
     setError(null)
     // Store pending attachment - will be uploaded after message is sent
     setPendingAttachments((prev) => [...prev, { file, type: fileType }])
-  }
-
-  async function handleDownloadAttachment(attachmentId: string) {
-    try {
-      await downloadAttachment(attachmentId)
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to download attachment'
-      setError(message)
-    }
   }
 
   async function refreshPdfDocuments(chatId: string) {
@@ -593,7 +706,7 @@ function App() {
             uploadedAttachments.push({
               id: result.id,
               file_name: result.file_name,
-              file_type: result.file_type as any,
+              file_type: result.file_type as Attachment['file_type'],
               mime_type: result.mime_type,
               file_size: result.file_size,
               upload_timestamp: result.upload_timestamp,
@@ -653,6 +766,43 @@ function App() {
     } finally {
       setIsSending(false)
     }
+  }
+
+  async function handleSheetUpload(file: File) {
+    if (!activeChatId || isUploadingSheet) return
+    setIsUploadingSheet(true)
+    setError(null)
+    try {
+      const datasource = await uploadSheetFile(activeChatId, file)
+      setSheetDatasources((prev) => {
+        const exists = prev.some((ds) => ds.id === datasource.id)
+        return exists ? prev : [datasource, ...prev]
+      })
+      setSelectedDatasource(datasource)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to upload file')
+    } finally {
+      setIsUploadingSheet(false)
+    }
+  }
+
+  function handleSheetQueryResult(result: SheetQueryResponse) {
+    const userMsg: ChatMessage = {
+      id: result.user_message_id,
+      role: 'user',
+      content: result.question,
+      attachments: [],
+      alignment: 'right',
+    }
+    const assistantMsg: ChatMessage = {
+      id: result.assistant_message_id,
+      role: 'assistant',
+      content: result.answer,
+      attachments: [],
+      alignment: 'left',
+      sheet_result: result,
+    }
+    setMessages((prev) => [...prev, userMsg, assistantMsg])
   }
 
   async function handleNLSQLQuery(connectionId: string, question: string) {
@@ -907,6 +1057,9 @@ function App() {
                         <SQLQueryResult key={exec.id} execution={exec} />
                       ))
                     }
+                    {message.sheet_result && (
+                      <SheetQueryResult result={message.sheet_result} />
+                    )}
                   </div>
                 </article>
               )}
@@ -936,6 +1089,11 @@ function App() {
               <div className="bubble bubble-loading">Querying database</div>
             </article>
           ) : null}
+          {isQueryingSheet ? (
+            <article className="bubble-row bubble-assistant">
+              <div className="bubble bubble-loading">Analyzing data</div>
+            </article>
+          ) : null}
         </div>
 
         <footer className="chat-footer">
@@ -950,8 +1108,56 @@ function App() {
               className={chatMode === 'database' ? 'mode-pill active' : 'mode-pill'}
               onClick={() => setChatMode('database')}
             >🗄 Database</button>
+            <button
+              type="button"
+              className={chatMode === 'sheets' ? 'mode-pill active' : 'mode-pill'}
+              onClick={() => setChatMode('sheets')}
+            >📊 Sheets</button>
           </div>
-          {chatMode === 'database' ? (
+          {chatMode === 'sheets' ? (
+            <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <SheetDatasourceList
+                items={sheetDatasources}
+                isUploading={isUploadingSheet}
+                onDeleted={(id) => {
+                  setSheetDatasources((prev) => prev.filter((ds) => ds.id !== id))
+                  if (selectedDatasource?.id === id) setSelectedDatasource(null)
+                }}
+                onSelect={setSelectedDatasource}
+                selectedId={selectedDatasource?.id ?? null}
+              />
+              {selectedDatasource ? (
+                <SheetComposer
+                  chatId={activeChatId ?? ''}
+                  datasource={selectedDatasource}
+                  onResult={(result) => {
+                    setIsQueryingSheet(false)
+                    handleSheetQueryResult(result)
+                  }}
+                  onClear={() => setSelectedDatasource(null)}
+                />
+              ) : (
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', position: 'relative' }}>
+                  <SheetUploadButton
+                    onSelect={(file) => void handleSheetUpload(file)}
+                    disabled={!activeChatId || isUploadingSheet}
+                  />
+                  <div style={{ position: 'relative' }}>
+                    <GoogleSheetConnect
+                      chatId={activeChatId ?? ''}
+                      onConnected={(ds) => {
+                        setSheetDatasources((prev) => {
+                          const exists = prev.some((d) => d.id === ds.id)
+                          return exists ? prev : [ds, ...prev]
+                        })
+                        setSelectedDatasource(ds)
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : chatMode === 'database' ? (
             <div style={{ padding: '10px 12px' }}>
               <NLSQLComposer
                 onSubmit={(cid, q) => void handleNLSQLQuery(cid, q)}

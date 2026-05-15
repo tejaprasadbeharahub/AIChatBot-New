@@ -1,4 +1,5 @@
 from functools import lru_cache
+import json
 from pathlib import Path
 from typing import Optional
 
@@ -68,6 +69,38 @@ class Settings(BaseSettings):
     sql_generation_temperature: float = 0.0
     sql_generation_model: Optional[str] = None
     sql_generation_retry_count: int = 1
+
+    cors_allowed_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
+    cors_allow_credentials: bool = False
+    cors_allowed_methods: str = "GET,POST,PUT,PATCH,DELETE,OPTIONS"
+    cors_allowed_headers: str = "Content-Type,Authorization"
+
+    def cors_allowed_origins_list(self) -> list[str]:
+        raw = (self.cors_allowed_origins or "").strip()
+        if not raw:
+            return ["http://localhost:5173"]
+
+        if raw.startswith("["):
+            try:
+                parsed = json.loads(raw)
+                if isinstance(parsed, list):
+                    return [str(item).strip() for item in parsed if str(item).strip()]
+            except json.JSONDecodeError:
+                pass
+
+        return [item.strip() for item in raw.split(",") if item.strip()]
+
+    def cors_allowed_methods_list(self) -> list[str]:
+        raw = (self.cors_allowed_methods or "").strip()
+        if not raw:
+            return ["GET", "POST", "OPTIONS"]
+        return [item.strip().upper() for item in raw.split(",") if item.strip()]
+
+    def cors_allowed_headers_list(self) -> list[str]:
+        raw = (self.cors_allowed_headers or "").strip()
+        if not raw:
+            return ["*"]
+        return [item.strip() for item in raw.split(",") if item.strip()]
 
 
 @lru_cache

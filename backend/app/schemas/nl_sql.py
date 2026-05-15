@@ -131,12 +131,12 @@ class SQLQueryExecutionRead(BaseModel):
     execution_finished_at: datetime | None
     execution_duration_ms: int | None
     row_count: int | None
-    returned_columns: list[str] = Field(default_factory=list)
-    result_rows: list[dict[str, Any]] = Field(default_factory=list)
+    returned_columns: list[str] | None = None
+    result_rows: list[dict[str, Any]] | None = None
     retry_count: int
     operation_type: OperationType | None = None
     risk_level: RiskLevelType | None = None
-    risk_messages: list[str] = Field(default_factory=list)
+    risk_messages: list[str] | None = None
     approval_status: ApprovalStatusType | None = None
 
     model_config = {"from_attributes": True}
