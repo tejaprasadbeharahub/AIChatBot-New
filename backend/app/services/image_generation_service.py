@@ -141,7 +141,8 @@ async def _generate_image_async(
             ]
 
             response = None
-            error_msg = None
+            errors: list[str] = []
+            auth_or_permission_error: str | None = None
 
             for endpoint in endpoints:
                 try:
@@ -158,15 +159,20 @@ async def _generate_image_async(
                         logger.info(f"Success with endpoint: {endpoint}")
                         break
                     else:
-                        error_msg = f"Status {response.status_code}: {response.text}"
-                        logger.warning(f"Failed with {endpoint}: {error_msg}")
+                        endpoint_error = f"{endpoint} -> Status {response.status_code}: {response.text}"
+                        errors.append(endpoint_error)
+                        logger.warning(f"Failed with {endpoint}: {endpoint_error}")
+                        if response.status_code in (401, 403):
+                            auth_or_permission_error = endpoint_error
                 except Exception as e:
-                    error_msg = str(e)
-                    logger.warning(f"Error with {endpoint}: {error_msg}")
+                    endpoint_error = f"{endpoint} -> {str(e)}"
+                    errors.append(endpoint_error)
+                    logger.warning(f"Error with {endpoint}: {endpoint_error}")
                     continue
 
             if not response or response.status_code != 200:
-                raise Exception(f"LiteLLM API failed: {error_msg or 'Unknown error'}")
+                preferred_error = auth_or_permission_error or (errors[0] if errors else "Unknown error")
+                raise Exception(f"LiteLLM API failed: {preferred_error}")
 
             response_data = response.json()
             logger.info(f"LiteLLM response: {json.dumps(response_data, indent=2)[:500]}")

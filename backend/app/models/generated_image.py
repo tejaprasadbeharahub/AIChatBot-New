@@ -34,5 +34,7 @@ class GeneratedImage(Base):
         DateTime(timezone=True), nullable=True
     )
 
-    message: Mapped["Message"] = relationship("Message", foreign_keys=[message_id])  # noqa: F821
+    message: Mapped["Message"] = relationship(
+        "Message", foreign_keys=[message_id], back_populates="generated_images"
+    )  # noqa: F821
     chat: Mapped["Chat"] = relationship("Chat", foreign_keys=[chat_id])  # noqa: F821

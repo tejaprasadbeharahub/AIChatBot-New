@@ -22,6 +22,7 @@ type ChatMessage = {
   content: string
   attachments: Attachment[]
   generated_images?: GeneratedImage[]
+  alignment: 'right' | 'left'
 }
 
 function createId() {
@@ -31,9 +32,11 @@ function createId() {
 function toUiMessages(items: Message[]): ChatMessage[] {
   return items.map((item) => ({
     id: item.id,
-    role: item.role,
+    role: item.role, // Preserve the original role for alignment
     content: item.content,
     attachments: item.attachments || [],
+    generated_images: item.generated_images || [],
+    alignment: item.role === 'user' ? 'right' : item.generated_images && item.generated_images.length > 0 ? 'left' : 'left', // Explicit alignment
   }))
 }
 
@@ -819,33 +822,26 @@ function App() {
             </article>
           ) : null}
           {messages.map((message) => (
-            <article key={message.id} className={`bubble-row ${message.role === 'user' ? 'bubble-user' : 'bubble-assistant'}`}>
-              <div className="bubble">
-                {message.content}
-                {message.attachments && message.attachments.length > 0 && (
-                  <div className="message-attachments">
-                    {message.attachments.map((attachment) => (
-                      <AttachmentPreview
-                        key={attachment.id}
-                        attachment={attachment}
-                        onDownload={handleDownloadAttachment}
-                      />
-                    ))}
-                  </div>
-                )}
-                {message.generated_images && message.generated_images.length > 0 && (
-                  <div className="message-generated-images">
-                    {message.generated_images.map((image) => (
+            <>
+              {message.role === 'user' && message.content && (
+                <article key={`${message.id}-text`} className="bubble-row bubble-user"> {/* User input on the right */}
+                  <div className="bubble">{message.content}</div>
+                </article>
+              )}
+              {message.generated_images && message.generated_images.length > 0 && (
+                message.generated_images.map((image) => (
+                  <article key={`${message.id}-image-${image.id}`} className="bubble-row bubble-assistant"> {/* Rendered image on the left */}
+                    <div className="bubble">
                       <GeneratedImageDisplay
-                        key={image.id}
                         image={image}
                         onDelete={handleDeleteGeneratedImage}
                       />
-                    ))}
-                  </div>
-                )}
-              </div>
-            </article>
+                      <p className="image-prompt">Prompt: {message.content}</p> {/* Text under the image */}
+                    </div>
+                  </article>
+                ))
+              )}
+            </>
           ))}
 
           {isSending ? (

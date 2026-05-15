@@ -29,3 +29,6 @@ class Message(Base):
     attachments: Mapped[list["Attachment"]] = relationship(
         "Attachment", back_populates="message", cascade="all, delete-orphan"
     )  # noqa: F821
+    generated_images: Mapped[list["GeneratedImage"]] = relationship(
+        "GeneratedImage", back_populates="message", cascade="all, delete-orphan"
+    )  # noqa: F821

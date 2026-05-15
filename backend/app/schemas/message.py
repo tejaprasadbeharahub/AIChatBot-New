@@ -2,7 +2,9 @@ import uuid
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+from app.schemas.generated_image import GeneratedImageRead
 
 
 class AttachmentRef(BaseModel):
@@ -23,7 +25,8 @@ class MessageRead(BaseModel):
     role: Literal["user", "assistant"]
     content: str
     timestamp: datetime
-    attachments: list[AttachmentRef] = []
+    attachments: list[AttachmentRef] = Field(default_factory=list)
+    generated_images: list[GeneratedImageRead] = Field(default_factory=list)
 
     model_config = {"from_attributes": True}
 

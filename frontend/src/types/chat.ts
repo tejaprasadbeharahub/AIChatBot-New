@@ -1,3 +1,5 @@
+import type { GeneratedImage } from './image_generation'
+
 export type ChatThread = {
   id: string
   user_id: string
@@ -32,5 +34,5 @@ export type Message = {
   content: string
   timestamp: string
   attachments: Attachment[]
-  generated_images?: any[]
+  generated_images?: GeneratedImage[]
 }
