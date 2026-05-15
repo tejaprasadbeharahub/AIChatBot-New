@@ -17,17 +17,40 @@ import { NLSQLComposer } from './components/sql/NLSQLComposer'
 import { DBConnectionManager } from './components/sql/DBConnectionManager'
 import './components/sql/sql.css'
 import { executeNLSQL } from './api/nl_sql'
+import { runResearchQuery } from './api/research_agent'
 import type { SQLQueryExecution } from './types/nl_sql'
 import { SheetUploadButton } from './components/sheet/SheetUploadButton'
 import { GoogleSheetConnect } from './components/sheet/GoogleSheetConnect'
 import { SheetDatasourceList } from './components/sheet/SheetDatasourceList'
 import { SheetComposer } from './components/sheet/SheetComposer'
 import { SheetQueryResult } from './components/sheet/SheetQueryResult'
+import { ResearchDigestView } from './components/ResearchDigestView'
 import './components/sheet/sheet.css'
 import { listChatDatasources, uploadSheetFile } from './api/sheet_agent'
 import type { SheetDatasource, SheetQueryResponse } from './types/sheet_agent'
 
 const SHEET_RESULT_MARKER_PREFIX = '\n\n[SHEET_RESULT]'
+const RESEARCH_DIGEST_MARKER_PREFIX = '\n\n[RESEARCH_DIGEST]'
+
+type ResearchDigest = {
+  summary: string
+  key_findings: Array<{ topic: string; finding: string; evidence_papers: string[] }>
+  methodologies: Array<{ name: string; frequency: number; papers: string[] }>
+  limitations: string[]
+  trends: Array<{ trend: string; direction: 'increasing' | 'decreasing' | 'stable'; recent_papers: string[] }>
+  total_papers_reviewed: number
+  papers_cited: Array<{
+    arxiv_id: string
+    title: string
+    authors: string[]
+    abstract: string
+    published_date: string
+    categories: string[]
+    pdf_url: string
+    relevance_score: number
+  }>
+  search_duration_seconds: number
+}
 
 function parsePersistedSheetResult(rawContent: string): { cleanContent: string; sheetResult: SheetQueryResponse | null } {
   const markerIndex = rawContent.lastIndexOf(SHEET_RESULT_MARKER_PREFIX)
@@ -68,6 +91,33 @@ function parsePersistedSheetResult(rawContent: string): { cleanContent: string; 
   }
 }
 
+function parsePersistedResearchDigest(rawContent: string): {
+  cleanContent: string
+  researchDigest: ResearchDigest | null
+  researchQuery: string | null
+} {
+  const markerIndex = rawContent.lastIndexOf(RESEARCH_DIGEST_MARKER_PREFIX)
+  if (markerIndex === -1) {
+    return { cleanContent: rawContent, researchDigest: null, researchQuery: null }
+  }
+
+  const cleanContent = rawContent.slice(0, markerIndex)
+  const markerPayload = rawContent.slice(markerIndex + RESEARCH_DIGEST_MARKER_PREFIX.length).trim()
+
+  let researchQuery: string | null = null
+  const queryMatch = cleanContent.match(/Research completed on:\s*(.+)/i)
+  if (queryMatch?.[1]) {
+    researchQuery = queryMatch[1].trim()
+  }
+
+  try {
+    const parsed = JSON.parse(markerPayload) as ResearchDigest
+    return { cleanContent, researchDigest: parsed, researchQuery }
+  } catch {
+    return { cleanContent: rawContent, researchDigest: null, researchQuery: null }
+  }
+}
+
 type ChatRole = 'user' | 'assistant'
 
 type ChatMessage = {
@@ -79,6 +129,8 @@ type ChatMessage = {
   alignment?: 'right' | 'left'
   sql_query_executions?: SQLQueryExecution[]
   sheet_result?: SheetQueryResponse
+  research_digest?: ResearchDigest
+  research_query?: string
 }
 
 function createId() {
@@ -87,9 +139,13 @@ function createId() {
 
 function toUiMessages(items: Message[]): ChatMessage[] {
   return items.map((item) => {
+    const parsedResearch = item.role === 'assistant'
+      ? parsePersistedResearchDigest(item.content)
+      : { cleanContent: item.content, researchDigest: null, researchQuery: null }
+
     const parsedSheet = item.role === 'assistant'
-      ? parsePersistedSheetResult(item.content)
-      : { cleanContent: item.content, sheetResult: null }
+      ? parsePersistedSheetResult(parsedResearch.cleanContent)
+      : { cleanContent: parsedResearch.cleanContent, sheetResult: null }
 
     return {
       id: item.id,
@@ -100,6 +156,8 @@ function toUiMessages(items: Message[]): ChatMessage[] {
       alignment: item.role === 'user' ? 'right' : 'left',
       sql_query_executions: (item as Message & { sql_query_executions?: SQLQueryExecution[] }).sql_query_executions ?? [],
       sheet_result: parsedSheet.sheetResult ?? undefined,
+      research_digest: parsedResearch.researchDigest ?? undefined,
+      research_query: parsedResearch.researchQuery ?? undefined,
     }
   })
 }
@@ -133,7 +191,9 @@ function App() {
   const [isUploadingPdf, setIsUploadingPdf] = useState(false)
   const [isGeneratingImage, setIsGeneratingImage] = useState(false)
   const [isRunningNLSQL, setIsRunningNLSQL] = useState(false)
-  const [chatMode, setChatMode] = useState<'chat' | 'database' | 'sheets'>('chat')
+  const [chatMode, setChatMode] = useState<'chat' | 'database' | 'sheets' | 'research'>('chat')
+  const [researchDepth, setResearchDepth] = useState<'quick' | 'balanced' | 'deep'>('balanced')
+  const [researchMaxPapers, setResearchMaxPapers] = useState<number>(20)
   const [showDBManager, setShowDBManager] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -905,6 +965,60 @@ function App() {
     }
   }
 
+  async function handleResearchSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const trimmed = input.trim()
+    if (!trimmed || isSending || isGeneratingImage || !token) {
+      return
+    }
+
+    const userMessage: ChatMessage = {
+      id: createId(),
+      role: 'user',
+      content: trimmed,
+      attachments: [],
+    }
+
+    setMessages((prev) => [...prev, userMessage])
+    setInput('')
+    setError(null)
+    setIsSending(true)
+
+    try {
+      let chatId = activeChatId
+      if (!chatId) {
+        const created = await createChat()
+        chatId = created.id
+        setActiveChatId(chatId)
+      }
+
+      const response = await runResearchQuery({
+        query: trimmed,
+        chat_id: chatId,
+        depth: researchDepth,
+        max_papers: researchMaxPapers,
+      })
+
+      const assistantMessage: ChatMessage = {
+        id: createId(),
+        role: 'assistant',
+        content: response.digest.summary,
+        attachments: [],
+        research_digest: response.digest,
+        research_query: response.query,
+      }
+
+      setMessages((prev) => [...prev, assistantMessage])
+      setActiveChatId(response.chat_id)
+      await refreshChats(true)
+    } catch (requestError) {
+      const message = requestError instanceof Error ? requestError.message : 'Research request failed'
+      setError(message)
+    } finally {
+      setIsSending(false)
+    }
+  }
+
   if (!token) {
     return (
       <main className="auth-shell">
@@ -1051,7 +1165,14 @@ function App() {
               {message.role === 'assistant' && message.content && (!message.generated_images || message.generated_images.length === 0) && (
                 <article key={`${message.id}-text`} className="bubble-row bubble-assistant">
                   <div className="bubble">
-                    <span>{message.content}</span>
+                    {message.research_digest ? (
+                      <ResearchDigestView
+                        digest={message.research_digest}
+                        query={message.research_query || 'Research Query'}
+                      />
+                    ) : (
+                      <span>{message.content}</span>
+                    )}
                     {message.sql_query_executions && message.sql_query_executions.length > 0 &&
                       message.sql_query_executions.map((exec) => (
                         <SQLQueryResult key={exec.id} execution={exec} />
@@ -1113,6 +1234,11 @@ function App() {
               className={chatMode === 'sheets' ? 'mode-pill active' : 'mode-pill'}
               onClick={() => setChatMode('sheets')}
             >📊 Sheets</button>
+            <button
+              type="button"
+              className={chatMode === 'research' ? 'mode-pill active' : 'mode-pill'}
+              onClick={() => setChatMode('research')}
+            >🔬 Research</button>
           </div>
           {chatMode === 'sheets' ? (
             <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -1166,6 +1292,52 @@ function App() {
                 disabled={isSending || isBootstrapping}
               />
             </div>
+          ) : chatMode === 'research' ? (
+            <form onSubmit={handleResearchSubmit} className="composer">
+              <div className="composer-input-wrapper">
+                <textarea
+                  value={input}
+                  onChange={(event) => setInput(event.target.value)}
+                  className="composer-input"
+                  placeholder="Ask a research question (for example: latest advances in agentic AI)"
+                  rows={2}
+                  disabled={isSending || isBootstrapping || isGeneratingImage}
+                />
+              </div>
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <span className="meta-text" style={{ margin: 0 }}>Depth</span>
+                  <select
+                    value={researchDepth}
+                    onChange={(event) => setResearchDepth(event.target.value as 'quick' | 'balanced' | 'deep')}
+                    disabled={isSending || isBootstrapping}
+                  >
+                    <option value="quick">Quick</option>
+                    <option value="balanced">Balanced</option>
+                    <option value="deep">Deep</option>
+                  </select>
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <span className="meta-text" style={{ margin: 0 }}>Max papers</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={50}
+                    value={researchMaxPapers}
+                    onChange={(event) => setResearchMaxPapers(Math.max(1, Math.min(50, Number(event.target.value) || 20)))}
+                    disabled={isSending || isBootstrapping}
+                    style={{ width: '80px' }}
+                  />
+                </label>
+                <button
+                  type="submit"
+                  className="composer-send"
+                  disabled={isSending || isBootstrapping || input.trim().length === 0}
+                >
+                  {isSending ? 'Researching...' : 'Run Research Agent'}
+                </button>
+              </div>
+            </form>
           ) : (
           <form onSubmit={handleSubmit} className="composer">
             <div className="composer-input-wrapper">

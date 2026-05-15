@@ -1,6 +1,11 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+# Import all models so SQLAlchemy registers them before mapper configuration
+import app.models.chat  # noqa: F401
+import app.models.message  # noqa: F401
+import app.models.research_session  # noqa: F401
+
 from app.api.auth import router as auth_router
 from app.api.attachment import router as attachment_router
 from app.api.chat import router as chat_router
@@ -8,6 +13,7 @@ from app.api.chats import router as chats_router
 from app.api.image_generation import router as image_generation_router
 from app.api.nl_sql import router as nl_sql_router
 from app.api.pdf_rag import router as pdf_rag_router
+from app.api.research_agent import router as research_agent_router
 from app.api.sheet_agent import router as sheet_agent_router
 from app.core.config import settings
 from app.services.sheet_agent.agent import validate_sheet_agent_dependencies
@@ -31,6 +37,7 @@ app.include_router(attachment_router, prefix="/api")
 app.include_router(image_generation_router, prefix="/api")
 app.include_router(nl_sql_router, prefix="/api")
 app.include_router(pdf_rag_router, prefix="/api")
+app.include_router(research_agent_router, prefix="/api")
 app.include_router(sheet_agent_router, prefix="/api")
 
 

@@ -35,3 +35,6 @@ class Chat(Base):
     sql_query_executions: Mapped[list["SQLQueryExecution"]] = relationship(  # noqa: F821
         "SQLQueryExecution", back_populates="chat", cascade="all, delete-orphan"
     )
+    research_sessions: Mapped[list["ResearchSession"]] = relationship(  # noqa: F821
+        "ResearchSession", back_populates="chat", cascade="all, delete-orphan"
+    )

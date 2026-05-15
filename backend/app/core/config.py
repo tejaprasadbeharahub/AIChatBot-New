@@ -70,6 +70,11 @@ class Settings(BaseSettings):
     sql_generation_model: Optional[str] = None
     sql_generation_retry_count: int = 1
 
+    # Research Agent
+    research_max_papers: int = 20
+    research_timeout_seconds: int = 120
+    research_default_depth: str = "balanced"  # quick, balanced, deep
+
     cors_allowed_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
     cors_allow_credentials: bool = False
     cors_allowed_methods: str = "GET,POST,PUT,PATCH,DELETE,OPTIONS"

@@ -35,3 +35,6 @@ class Message(Base):
     sql_query_executions: Mapped[list["SQLQueryExecution"]] = relationship(
         "SQLQueryExecution", back_populates="message"
     )  # noqa: F821
+    research_sessions: Mapped[list["ResearchSession"]] = relationship(
+        "ResearchSession", back_populates="message"
+    )  # noqa: F821
