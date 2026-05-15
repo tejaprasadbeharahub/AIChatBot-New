@@ -15,6 +15,7 @@ from app.api.nl_sql import router as nl_sql_router
 from app.api.pdf_rag import router as pdf_rag_router
 from app.api.research_agent import router as research_agent_router
 from app.api.sheet_agent import router as sheet_agent_router
+from app.api.tictactoe import router as tictactoe_router
 from app.core.config import settings
 from app.services.sheet_agent.agent import validate_sheet_agent_dependencies
 
@@ -39,6 +40,7 @@ app.include_router(nl_sql_router, prefix="/api")
 app.include_router(pdf_rag_router, prefix="/api")
 app.include_router(research_agent_router, prefix="/api")
 app.include_router(sheet_agent_router, prefix="/api")
+app.include_router(tictactoe_router, prefix="/api")
 
 
 @app.on_event("startup")

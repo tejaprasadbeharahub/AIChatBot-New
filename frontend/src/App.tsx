@@ -25,6 +25,7 @@ import { SheetDatasourceList } from './components/sheet/SheetDatasourceList'
 import { SheetComposer } from './components/sheet/SheetComposer'
 import { SheetQueryResult } from './components/sheet/SheetQueryResult'
 import { ResearchDigestView } from './components/ResearchDigestView'
+import { TicTacToeGame } from './components/TicTacToe/TicTacToeGame'
 import './components/sheet/sheet.css'
 import { listChatDatasources, uploadSheetFile } from './api/sheet_agent'
 import type { SheetDatasource, SheetQueryResponse } from './types/sheet_agent'
@@ -191,7 +192,7 @@ function App() {
   const [isUploadingPdf, setIsUploadingPdf] = useState(false)
   const [isGeneratingImage, setIsGeneratingImage] = useState(false)
   const [isRunningNLSQL, setIsRunningNLSQL] = useState(false)
-  const [chatMode, setChatMode] = useState<'chat' | 'database' | 'sheets' | 'research'>('chat')
+  const [chatMode, setChatMode] = useState<'chat' | 'database' | 'sheets' | 'research' | 'tictactoe'>('chat')
   const [researchDepth, setResearchDepth] = useState<'quick' | 'balanced' | 'deep'>('balanced')
   const [researchMaxPapers, setResearchMaxPapers] = useState<number>(20)
   const [showDBManager, setShowDBManager] = useState(false)
@@ -1149,13 +1150,16 @@ function App() {
         </header>
 
         <div ref={listRef} className="message-list" aria-live="polite">
-          {isBootstrapping || isLoadingMessages ? <p className="meta-text">Loading messages...</p> : null}
-          {!isBootstrapping && !isLoadingMessages && messages.length === 0 ? (
+          {chatMode === 'tictactoe' ? (
+            <TicTacToeGame />
+          ) : null}
+          {chatMode !== 'tictactoe' && (isBootstrapping || isLoadingMessages) ? <p className="meta-text">Loading messages...</p> : null}
+          {chatMode !== 'tictactoe' && !isBootstrapping && !isLoadingMessages && messages.length === 0 ? (
             <article className="bubble-row bubble-assistant">
               <div className="bubble">Hello. Start typing and I will save this chat automatically.</div>
             </article>
           ) : null}
-          {messages.map((message) => (
+          {chatMode !== 'tictactoe' && messages.map((message) => (
             <>
               {message.role === 'user' && message.content && (
                 <article key={`${message.id}-text`} className="bubble-row bubble-user"> {/* User input on the right */}
@@ -1239,6 +1243,11 @@ function App() {
               className={chatMode === 'research' ? 'mode-pill active' : 'mode-pill'}
               onClick={() => setChatMode('research')}
             >🔬 Research</button>
+            <button
+              type="button"
+              className={chatMode === 'tictactoe' ? 'mode-pill active' : 'mode-pill'}
+              onClick={() => setChatMode('tictactoe')}
+            >🎮 Game</button>
           </div>
           {chatMode === 'sheets' ? (
             <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -1292,7 +1301,7 @@ function App() {
                 disabled={isSending || isBootstrapping}
               />
             </div>
-          ) : chatMode === 'research' ? (
+          ) : chatMode === 'tictactoe' ? null : chatMode === 'research' ? (
             <form onSubmit={handleResearchSubmit} className="composer">
               <div className="composer-input-wrapper">
                 <textarea
