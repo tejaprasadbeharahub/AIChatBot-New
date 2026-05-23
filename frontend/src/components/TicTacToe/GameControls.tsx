@@ -15,6 +15,8 @@ const DIFFICULTIES: { value: TicTacToeDifficulty; label: string; description: st
   { value: 'easy', label: 'Easy', description: 'Random moves' },
   { value: 'medium', label: 'Medium', description: 'Strategic play' },
   { value: 'unbeatable', label: 'Unbeatable', description: 'Minimax AI' },
+  { value: 'reasoning', label: 'Reasoning', description: 'LLM reasoning + safe fallback' },
+  { value: 'hybrid', label: 'Hybrid', description: 'LLM first, minimax backup' },
 ]
 
 export function GameControls({

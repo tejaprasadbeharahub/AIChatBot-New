@@ -17,6 +17,10 @@ class GameSession:
     current_turn: str  # "player" or "ai"
     status: str  # "ongoing" | "player_wins" | "ai_wins" | "draw"
     winning_cells: list[int] = field(default_factory=list)
+    ai_reasoning: list[dict[str, object]] = field(default_factory=list)
+    move_history: list[dict[str, object]] = field(default_factory=list)
+    conversation_history: list[dict[str, str]] = field(default_factory=list)
+    last_ai_strategy: str = "deterministic"
 
 
 # Module-level in-memory store. Keyed by game_id.
