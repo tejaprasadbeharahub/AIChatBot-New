@@ -4,15 +4,19 @@ ArXiv API service — searches and retrieves research papers.
 
 import logging
 import re
+from email.utils import parsedate_to_datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 import requests
 from fastapi import HTTPException
 
+from app.core.config import settings
+from app.services.mcp.errors import MCPParsingError, MCPRateLimitError, MCPTransportError
+
 logger = logging.getLogger(__name__)
 
 ARXIV_BASE_URL = "http://export.arxiv.org/api/query"
-MAX_RETRIES = 3
 TIMEOUT_SECONDS = 10
 
 
@@ -79,20 +83,33 @@ def search_papers(
         "sortOrder": "descending",
     }
 
+    timeout_seconds = max(1, int(settings.arxiv_request_timeout_seconds or TIMEOUT_SECONDS))
+
     try:
         response = requests.get(
             ARXIV_BASE_URL,
             params=params,
-            timeout=TIMEOUT_SECONDS,
+            timeout=timeout_seconds,
             headers={"User-Agent": "ResearchAgent/1.0 (mailto:research@example.com)"},
         )
+
+        if response.status_code == 429:
+            retry_after = _parse_retry_after_seconds(response.headers.get("Retry-After"))
+            raise MCPRateLimitError(
+                "arXiv API is currently rate-limiting requests.",
+                retry_after_seconds=retry_after,
+            )
+
         response.raise_for_status()
+    except requests.exceptions.Timeout as exc:
+        logger.warning("arxiv_request_timeout", extra={"query": query, "timeout_seconds": timeout_seconds})
+        raise MCPTransportError("arXiv request timed out") from exc
+    except requests.exceptions.ConnectionError as exc:
+        logger.warning("arxiv_connection_error", extra={"query": query, "error": str(exc)})
+        raise MCPTransportError("arXiv network connection failed") from exc
     except requests.exceptions.RequestException as exc:
-        logger.error(f"ArXiv API error: {exc}")
-        raise HTTPException(
-            status_code=503,
-            detail=f"Failed to reach arXiv API: {str(exc)}",
-        ) from exc
+        logger.error("arxiv_request_exception", extra={"query": query, "error": str(exc)})
+        raise MCPTransportError("arXiv request failed") from exc
 
     papers = _parse_arxiv_response(response.text)
     logger.info(f"Found {len(papers)} papers for query: {query}")
@@ -137,6 +154,9 @@ def search_papers_iterative(
 
 def _parse_arxiv_response(response_text: str) -> list[ArxivPaper]:
     """Parse arXiv API XML response."""
+    if "<feed" not in response_text:
+        raise MCPParsingError("Malformed arXiv response payload")
+
     papers = []
 
     # Extract entries
@@ -182,6 +202,30 @@ def _parse_arxiv_response(response_text: str) -> list[ArxivPaper]:
             continue
 
     return papers
+
+
+def _parse_retry_after_seconds(value: str | None) -> float | None:
+    """Parse Retry-After header (delta-seconds or HTTP date)."""
+    if not value:
+        return None
+
+    raw = value.strip()
+    if not raw:
+        return None
+
+    try:
+        return max(0.0, float(raw))
+    except ValueError:
+        pass
+
+    try:
+        dt = parsedate_to_datetime(raw)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        now = datetime.now(timezone.utc)
+        return max(0.0, (dt - now).total_seconds())
+    except Exception:
+        return None
 
 
 def get_paper_details(arxiv_id: str) -> Optional[ArxivPaper]:

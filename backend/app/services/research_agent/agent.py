@@ -14,11 +14,11 @@ from sqlalchemy.orm import Session
 from typing_extensions import TypedDict
 
 from app.ai.llm import get_chat_model
+from app.services.mcp.errors import MCPExecutionError
 from app.models.research_session import ResearchPaper, ResearchSession
 from app.repositories.chat_repo import get_chat_for_user
 from app.schemas.research_agent import ResearchDigestFull
-from app.services.research_agent.arxiv_service import search_papers_iterative
-from app.services.research_agent.digest_service import generate_research_digest
+from app.services.mcp.client import MCPClient
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +48,7 @@ class ResearchAgent:
         self.llm = get_chat_model(temperature=0.0)
         self.event_callback = None
         self.graph: Optional[Any] = None
+        self.mcp_client = MCPClient()
 
     async def research(
         self,
@@ -183,18 +184,21 @@ class ResearchAgent:
         """Search for papers on arXiv."""
         logger.info(f"Node: Searching papers for '{state['query']}'")
 
-        papers = await asyncio.to_thread(
-            search_papers_iterative,
-            state["query"],
-            state["max_papers"],
-            state["depth"],
-        )
-
-        # Convert to dicts and emit events
-        paper_dicts = []
-        for paper in papers:
-            paper_dict = paper.to_dict() if hasattr(paper, "to_dict") else paper
-            paper_dicts.append(paper_dict)
+        try:
+            paper_dicts = await self.mcp_client.invoke_tool(
+                "research.search_papers_iterative",
+                {
+                    "query": state["query"],
+                    "max_results": state["max_papers"],
+                    "depth": state["depth"],
+                },
+            )
+        except Exception as exc:
+            logger.warning("research_search_tool_failed", extra={"error": str(exc)})
+            await self._emit_event("warning", {
+                "message": "Research sources are temporarily unavailable. Continuing with limited context.",
+            })
+            paper_dicts = []
 
         # Emit found paper events synchronously
         for paper_dict in paper_dicts:
@@ -215,8 +219,13 @@ class ResearchAgent:
             "message": f"Analyzing {len(state['papers'])} papers for relevance..."
         })
 
-        self._score_papers_for_relevance(state["query"], state["papers"])
-        state["papers"].sort(key=lambda p: p.get("relevance_score", 0), reverse=True)
+        state["papers"] = await self.mcp_client.invoke_tool(
+            "research.score_papers",
+            {
+                "query": state["query"],
+                "papers": state["papers"],
+            },
+        )
 
         return state
 
@@ -247,10 +256,16 @@ class ResearchAgent:
         # Search with first refined term
         if state["refined_terms"] and state["search_attempts"] < 3:
             term = state["refined_terms"].pop(0)
-            refined_papers = await asyncio.to_thread(search_papers_iterative, term, 5, "quick")
+            refined_papers = await self.mcp_client.invoke_tool(
+                "research.search_papers_iterative",
+                {
+                    "query": term,
+                    "max_results": 5,
+                    "depth": "quick",
+                },
+            )
 
-            for paper in refined_papers:
-                paper_dict = paper.to_dict() if hasattr(paper, "to_dict") else paper
+            for paper_dict in refined_papers:
                 state["papers"].append(paper_dict)
 
             state["search_attempts"] += 1
@@ -265,11 +280,48 @@ class ResearchAgent:
             "message": f"Generating research digest from {len(state['papers'])} papers..."
         })
 
-        digest = await generate_research_digest(
-            query=state["query"],
-            papers=state["papers"][:state["max_papers"]],
-            llm=state["llm"],
-        )
+        if not state["papers"]:
+            digest = ResearchDigestFull(
+                summary=(
+                    "We could not retrieve fresh arXiv evidence at the moment due to temporary "
+                    "upstream constraints. Please try again shortly for a full evidence-based digest."
+                ),
+                key_findings=[],
+                methodologies=[],
+                limitations=[
+                    "Temporary upstream availability/rate-limiting impacted evidence retrieval.",
+                ],
+                trends=[],
+                total_papers_reviewed=0,
+                papers_cited=[],
+                search_duration_seconds=0,
+            )
+        else:
+            try:
+                digest_data = await self.mcp_client.invoke_tool(
+                    "research.generate_digest",
+                    {
+                        "query": state["query"],
+                        "papers": state["papers"][:state["max_papers"]],
+                        "llm": state["llm"],
+                    },
+                )
+                digest = ResearchDigestFull.model_validate(digest_data)
+            except Exception as exc:
+                logger.warning("research_digest_tool_failed", extra={"error": str(exc)})
+                digest = ResearchDigestFull(
+                    summary=(
+                        "We gathered sources but could not generate the full structured digest due "
+                        "to a temporary processing issue."
+                    ),
+                    key_findings=[],
+                    methodologies=[],
+                    limitations=["Temporary digest generation issue."],
+                    trends=[],
+                    total_papers_reviewed=len(state["papers"]),
+                    papers_cited=[],
+                    search_duration_seconds=0,
+                )
 
         state["digest"] = digest
         return state
@@ -316,23 +368,21 @@ class ResearchAgent:
 
     async def _generate_refined_terms_async(self, query: str) -> list[str]:
         """Generate related search terms without blocking the event loop."""
-        prompt = f"""Generate 2-3 related search terms for: "{query}"
-        
-Respond with ONLY comma-separated terms, e.g.: "machine learning, neural networks"
-Do not include the original query."""
-
         try:
-            if hasattr(self.llm, "ainvoke"):
-                response = await self.llm.ainvoke(prompt)
-            else:
-                response = await asyncio.to_thread(self.llm.invoke, prompt)
-
-            content = response.content if hasattr(response, "content") else str(response)
-            terms = [t.strip() for t in content.split(",") if t.strip()]
+            terms = await self.mcp_client.invoke_tool(
+                "research.generate_refined_terms",
+                {
+                    "llm": self.llm,
+                    "query": query,
+                },
+            )
             logger.info(f"Refined terms: {terms}")
             return terms
         except Exception as exc:
             logger.warning(f"Failed to generate refined terms: {exc}")
+            await self._emit_event("warning", {
+                "message": "Could not refine search terms right now. Continuing with available context.",
+            })
             return []
 
     async def _emit_event(self, event_type: str, data: dict) -> None:

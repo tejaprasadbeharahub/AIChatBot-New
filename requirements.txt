@@ -18,6 +18,7 @@ email-validator
 authlib
 
 httpx
+websockets
 
 langchain
 langchain-openai

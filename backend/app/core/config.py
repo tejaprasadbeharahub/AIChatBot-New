@@ -74,6 +74,21 @@ class Settings(BaseSettings):
     research_max_papers: int = 20
     research_timeout_seconds: int = 120
     research_default_depth: str = "balanced"  # quick, balanced, deep
+    arxiv_max_retry_attempts: int = 4
+    arxiv_initial_retry_delay_seconds: float = 1.0
+    arxiv_max_backoff_delay_seconds: float = 20.0
+    arxiv_request_timeout_seconds: int = 12
+    arxiv_min_request_interval_seconds: float = 0.4
+
+    # MCP Integration
+    mcp_transport: str = "inprocess"  # inprocess | stdio | http | websocket
+    mcp_http_url: Optional[str] = None
+    mcp_ws_url: Optional[str] = None
+    mcp_stdio_command: Optional[str] = None
+    mcp_auth_token: Optional[str] = None
+    mcp_request_timeout_seconds: int = 20
+    mcp_retry_attempts: int = 2
+    mcp_retry_backoff_seconds: float = 0.5
 
     cors_allowed_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
     cors_allow_credentials: bool = False
