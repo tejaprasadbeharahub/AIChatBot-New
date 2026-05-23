@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 from collections.abc import AsyncIterator
 from typing import Any, Optional
 
@@ -15,7 +16,6 @@ from app.ai.llm import get_chat_model
 from app.services.tictactoe.game_logic import get_empty_cells
 from app.services.tictactoe.tools import (
     check_winner_tool,
-    generate_ai_move_tool,
     update_board_tool,
     validate_move_tool,
 )
@@ -30,7 +30,6 @@ class AgentState(TypedDict):
     difficulty: str
     llm_available: bool
     suggested_move: Optional[int]
-    deterministic_move: Optional[int]
     selected_move: Optional[int]
     selected_strategy: str
     status_after_move: str
@@ -56,17 +55,73 @@ class TicTacToeGraphAgent:
         workflow = StateGraph(AgentState)
         workflow.add_node("analyze_board", self._node_analyze_board)
         workflow.add_node("llm_reason", self._node_llm_reason)
-        workflow.add_node("deterministic", self._node_deterministic)
         workflow.add_node("select_move", self._node_select_move)
         workflow.add_node("validate_apply", self._node_validate_apply)
 
         workflow.set_entry_point("analyze_board")
         workflow.add_edge("analyze_board", "llm_reason")
-        workflow.add_edge("llm_reason", "deterministic")
-        workflow.add_edge("deterministic", "select_move")
+        workflow.add_edge("llm_reason", "select_move")
         workflow.add_edge("select_move", "validate_apply")
         workflow.add_edge("validate_apply", END)
         return workflow.compile()
+
+    def _extract_llm_json(self, content: str) -> dict[str, Any]:
+        """Parse JSON response from model, allowing markdown wrappers and loose formatting."""
+        text = content.strip()
+        fenced_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
+        if fenced_match:
+            text = fenced_match.group(1).strip()
+
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            brace_match = re.search(r"\{.*\}", text, re.DOTALL)
+            if brace_match:
+                return json.loads(brace_match.group(0))
+            raise
+
+    def _difficulty_style(self, difficulty: str) -> str:
+        if difficulty == "easy":
+            return "Play casually. Prefer simple and human-like moves over optimal play."
+        if difficulty == "medium":
+            return "Play strategically but not perfectly."
+        if difficulty == "unbeatable":
+            return "Play perfectly to maximize win/draw outcomes."
+        if difficulty == "hybrid":
+            return "Play strongly with practical tactical focus."
+        return "Play strategically and provide concise rationale."
+
+    async def _request_llm_move(
+        self,
+        state: AgentState,
+        legal_moves: list[int],
+        retry_hint: Optional[str] = None,
+    ) -> tuple[Optional[int], str, Optional[float]]:
+        if self._llm is None:
+            return None, "LLM is unavailable for move planning.", None
+
+        retry_line = f"\nRetry note: {retry_hint}" if retry_hint else ""
+        prompt = (
+            "You are a Tic Tac Toe move planner.\n"
+            f"Board (index 0-8): {state['board']}\n"
+            f"AI symbol: {state['ai_symbol']}, Player symbol: {state['player_symbol']}\n"
+            f"Legal moves: {legal_moves}\n"
+            f"Style: {self._difficulty_style(state['difficulty'])}{retry_line}\n"
+            "Return only JSON with keys: move_index (int), reason (string), confidence (0..1)."
+        )
+
+        if hasattr(self._llm, "ainvoke"):
+            result = await self._llm.ainvoke(prompt)
+        else:
+            result = await asyncio.to_thread(self._llm.invoke, prompt)
+
+        content = result.content if hasattr(result, "content") else str(result)
+        data = self._extract_llm_json(content)
+        move_index = data.get("move_index")
+        reason = str(data.get("reason") or "LLM selected a move.")
+        confidence_raw = data.get("confidence")
+        confidence = float(confidence_raw) if confidence_raw is not None else None
+        return (move_index if isinstance(move_index, int) else None), reason, confidence
 
     def _append_reason(
         self,
@@ -104,103 +159,46 @@ class TicTacToeGraphAgent:
         return state
 
     async def _node_llm_reason(self, state: AgentState) -> AgentState:
-        if state["difficulty"] not in ("reasoning", "hybrid"):
-            self._append_reason(
-                state,
-                "llm_skip",
-                "Difficulty is deterministic-first; skipping LLM planner.",
-                "system",
-            )
-            return state
-
         if self._llm is None:
+            state["error"] = "LLM is unavailable. LLM-only mode cannot choose a move."
             self._append_reason(
                 state,
                 "llm_unavailable",
-                "LLM is unavailable. Falling back to deterministic strategy.",
+                "LLM is unavailable. No deterministic fallback is used in LLM-only mode.",
                 "system",
             )
             return state
 
-        empty = get_empty_cells(state["board"])
-        prompt = (
-            "You are planning a Tic Tac Toe move.\n"
-            f"Board (index 0-8): {state['board']}\n"
-            f"AI symbol: {state['ai_symbol']}, Player symbol: {state['player_symbol']}\n"
-            f"Legal moves: {empty}\n"
-            "Respond as JSON: {\"move_index\": <int>, \"reason\": <string>, \"confidence\": <0-1 float>}"
-        )
+        legal_moves = get_empty_cells(state["board"])
+        if not legal_moves:
+            state["status_after_move"] = "draw"
+            state["error"] = "No legal AI moves available"
+            return state
 
         try:
-            if hasattr(self._llm, "ainvoke"):
-                result = await self._llm.ainvoke(prompt)
-            else:
-                result = await asyncio.to_thread(self._llm.invoke, prompt)
-            content = result.content if hasattr(result, "content") else str(result)
-            data = json.loads(content)
-            move_index = data.get("move_index")
-            if isinstance(move_index, int):
-                state["suggested_move"] = move_index
+            move_index, reason, confidence = await self._request_llm_move(state, legal_moves)
+            state["suggested_move"] = move_index
             self._append_reason(
                 state,
                 "llm_plan",
-                str(data.get("reason") or "LLM generated a strategic move suggestion."),
+                reason,
                 "llm",
-                float(data.get("confidence")) if data.get("confidence") is not None else None,
+                confidence,
             )
         except Exception as exc:  # pragma: no cover - network/provider dependent
+            state["error"] = f"LLM planning failed: {exc}"
             self._append_reason(
                 state,
-                "llm_parse_fallback",
-                f"LLM planning failed ({exc}). Using deterministic fallback.",
+                "llm_failure",
+                f"LLM planning failed ({exc}).",
                 "system",
             )
-        return state
-
-    async def _node_deterministic(self, state: AgentState) -> AgentState:
-        tool_out = generate_ai_move_tool(
-            board=state["board"],
-            ai_symbol=state["ai_symbol"],
-            player_symbol=state["player_symbol"],
-            difficulty=state["difficulty"],
-        )
-        move_index = tool_out.get("move_index")
-        state["deterministic_move"] = move_index if isinstance(move_index, int) else None
-
-        mapped_strategy = str(tool_out.get("strategy") or "unbeatable")
-        self._append_reason(
-            state,
-            "deterministic_plan",
-            f"Deterministic engine suggests index {state['deterministic_move']} using {mapped_strategy} strategy.",
-            "minimax",
-            0.95 if mapped_strategy == "unbeatable" else 0.75,
-        )
         return state
 
     async def _node_select_move(self, state: AgentState) -> AgentState:
         suggested = state.get("suggested_move")
-        deterministic = state.get("deterministic_move")
-
-        if state["difficulty"] == "reasoning" and isinstance(suggested, int):
-            state["selected_move"] = suggested
-            state["selected_strategy"] = "llm"
-        elif state["difficulty"] == "hybrid" and isinstance(suggested, int):
-            validation = validate_move_tool(state["board"], suggested)
-            if bool(validation["valid"]):
-                state["selected_move"] = suggested
-                state["selected_strategy"] = "hybrid_llm"
-            else:
-                state["selected_move"] = deterministic
-                state["selected_strategy"] = "hybrid_fallback"
-                self._append_reason(
-                    state,
-                    "hybrid_fallback",
-                    "LLM suggestion was invalid for current board; switched to deterministic fallback.",
-                    "validation",
-                )
-        else:
-            state["selected_move"] = deterministic
-            state["selected_strategy"] = "deterministic"
+        state["selected_move"] = suggested if isinstance(suggested, int) else None
+        state["selected_strategy"] = "llm_only"
 
         self._append_reason(
             state,
@@ -219,14 +217,45 @@ class TicTacToeGraphAgent:
                 state["error"] = "No legal AI moves available"
                 state["status_after_move"] = "draw"
                 return state
-            selected = empty[0]
+            retry_hint = (
+                f"Previous move suggestion {selected} was invalid. "
+                f"You must choose only from legal moves: {empty}."
+            )
+            try:
+                retry_move, retry_reason, retry_confidence = await self._request_llm_move(
+                    state,
+                    empty,
+                    retry_hint=retry_hint,
+                )
+            except Exception as exc:  # pragma: no cover - provider dependent
+                state["error"] = f"LLM retry failed: {exc}"
+                self._append_reason(
+                    state,
+                    "llm_retry_failure",
+                    f"LLM retry for valid move failed ({exc}).",
+                    "system",
+                )
+                return state
+
+            if retry_move is None or not bool(validate_move_tool(state["board"], retry_move)["valid"]):
+                state["error"] = "LLM returned invalid move after retry"
+                self._append_reason(
+                    state,
+                    "llm_retry_invalid",
+                    "LLM retry still produced an invalid move; move application stopped.",
+                    "validation",
+                )
+                return state
+
+            selected = retry_move
             state["selected_move"] = selected
-            state["selected_strategy"] = "safety_fallback"
+            state["selected_strategy"] = "llm_retry"
             self._append_reason(
                 state,
-                "safety_fallback",
-                f"Selected move was invalid; forced legal move index {selected}.",
-                "validation",
+                "llm_retry_success",
+                retry_reason,
+                "llm",
+                retry_confidence,
             )
 
         apply_out = update_board_tool(state["board"], selected, state["ai_symbol"])
@@ -250,9 +279,8 @@ class TicTacToeGraphAgent:
             "difficulty": difficulty,
             "llm_available": self._llm is not None,
             "suggested_move": None,
-            "deterministic_move": None,
             "selected_move": None,
-            "selected_strategy": "deterministic",
+            "selected_strategy": "llm_only",
             "status_after_move": "ongoing",
             "winning_cells": [],
             "reasoning_steps": [],
@@ -262,7 +290,7 @@ class TicTacToeGraphAgent:
         final_state = await self._graph.ainvoke(state)
         return {
             "move_index": final_state.get("selected_move"),
-            "strategy": final_state.get("selected_strategy", "deterministic"),
+            "strategy": final_state.get("selected_strategy", "llm_only"),
             "board": final_state["board"],
             "status": final_state.get("status_after_move", "ongoing"),
             "winning_cells": final_state.get("winning_cells", []),
@@ -284,9 +312,8 @@ class TicTacToeGraphAgent:
             "difficulty": difficulty,
             "llm_available": self._llm is not None,
             "suggested_move": None,
-            "deterministic_move": None,
             "selected_move": None,
-            "selected_strategy": "deterministic",
+            "selected_strategy": "llm_only",
             "status_after_move": "ongoing",
             "winning_cells": [],
             "reasoning_steps": [],
@@ -312,7 +339,7 @@ class TicTacToeGraphAgent:
             "event": "move",
             "data": {
                 "move_index": final_state.get("selected_move"),
-                "strategy": final_state.get("selected_strategy", "deterministic"),
+                "strategy": final_state.get("selected_strategy", "llm_only"),
                 "board": final_state["board"],
                 "status": final_state.get("status_after_move", "ongoing"),
                 "winning_cells": final_state.get("winning_cells", []),
@@ -339,8 +366,8 @@ class TicTacToeGraphAgent:
         if self._llm is None:
             return {
                 "answer": (
-                    "I am currently running in deterministic mode. "
-                    "I validate all moves and prioritize winning or blocking lines."
+                    "I cannot answer right now because the LLM backend is unavailable. "
+                    "Please retry once the LLM service is reachable."
                 ),
                 "strategy_hints": hints,
             }
