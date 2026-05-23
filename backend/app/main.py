@@ -7,6 +7,8 @@ import app.models.message  # noqa: F401
 import app.models.research_session  # noqa: F401
 
 from app.api.auth import router as auth_router
+from app.api.agent import router as agent_router
+from app.api.analytics import router as analytics_router
 from app.api.attachment import router as attachment_router
 from app.api.chat import router as chat_router
 from app.api.chats import router as chats_router
@@ -14,13 +16,22 @@ from app.api.image_generation import router as image_generation_router
 from app.api.nl_sql import router as nl_sql_router
 from app.api.pdf_rag import router as pdf_rag_router
 from app.api.research_agent import router as research_agent_router
+from app.api.research import router as research_router
 from app.api.sheet_agent import router as sheet_agent_router
 from app.api.tictactoe import router as tictactoe_router
+from app.api.workflow import router as workflow_router
 from app.core.config import settings
 from app.services.sheet_agent.agent import validate_sheet_agent_dependencies
+from app.utils.logging import configure_logging
+
+# Import workflow models so SQLAlchemy metadata includes them at startup.
+import app.models.workflow_request  # noqa: F401
+import app.models.research_result  # noqa: F401
+import app.models.daily_report  # noqa: F401
 
 
 app = FastAPI(title=settings.app_name or "amzur-ai-chat")
+configure_logging("INFO")
 
 # CORS must be registered before routes so preflight and actual requests are handled consistently.
 app.add_middleware(
@@ -41,6 +52,10 @@ app.include_router(pdf_rag_router, prefix="/api")
 app.include_router(research_agent_router, prefix="/api")
 app.include_router(sheet_agent_router, prefix="/api")
 app.include_router(tictactoe_router, prefix="/api")
+app.include_router(workflow_router, prefix="/api")
+app.include_router(agent_router, prefix="/api")
+app.include_router(analytics_router, prefix="/api")
+app.include_router(research_router, prefix="/api")
 
 
 @app.on_event("startup")

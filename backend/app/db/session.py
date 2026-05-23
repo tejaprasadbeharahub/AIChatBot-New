@@ -13,12 +13,25 @@ from app.models import generated_image as _generated_image_model  # noqa: F401
 from app.models import pdf_document as _pdf_document_model  # noqa: F401
 from app.models import db_connection as _db_connection_model  # noqa: F401
 from app.models import sql_query_execution as _sql_query_execution_model  # noqa: F401
+from app.models import workflow_request as _workflow_request_model  # noqa: F401
+from app.models import research_result as _research_result_model  # noqa: F401
+from app.models import daily_report as _daily_report_model  # noqa: F401
 
 
 def _make_engine():
     url = settings.database_url
     if not url:
         raise RuntimeError("DATABASE_URL is not set. Add it to .env before starting the server.")
+    return create_engine(url, pool_pre_ping=True, future=True)
+
+
+def _make_workflow_engine():
+    # Workflow APIs prefer Supabase DB; fallback to DATABASE_URL for local/dev continuity.
+    url = settings.supabase_database_url or settings.database_url
+    if not url:
+        raise RuntimeError(
+            "SUPABASE_DATABASE_URL (or DATABASE_URL fallback) is not set. Add it to .env before starting the server."
+        )
     return create_engine(url, pool_pre_ping=True, future=True)
 
 
@@ -32,9 +45,28 @@ def _make_session_factory():
     return sessionmaker(autocommit=False, autoflush=False, bind=_engine())
 
 
+@lru_cache(maxsize=1)
+def _workflow_engine():
+    return _make_workflow_engine()
+
+
+@lru_cache(maxsize=1)
+def _make_workflow_session_factory():
+    return sessionmaker(autocommit=False, autoflush=False, bind=_workflow_engine())
+
+
 def get_db() -> Generator[Session, None, None]:
     """FastAPI dependency that yields a SQLAlchemy session and closes it after the request."""
     db = _make_session_factory()()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+def get_workflow_db() -> Generator[Session, None, None]:
+    """FastAPI dependency for workflow APIs using Supabase DB when configured."""
+    db = _make_workflow_session_factory()()
     try:
         yield db
     finally:

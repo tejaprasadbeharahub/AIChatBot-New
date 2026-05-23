@@ -26,6 +26,7 @@ langchain-google-genai
 langgraph
 langchain-experimental
 openai
+litellm
 chromadb
 
 pandas

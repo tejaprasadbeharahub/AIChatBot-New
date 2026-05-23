@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     environment: Optional[str] = None
 
     database_url: Optional[str] = None
+    supabase_database_url: Optional[str] = None
 
     litellm_proxy_url: Optional[str] = None
     litellm_api_key: Optional[str] = None
@@ -89,6 +90,14 @@ class Settings(BaseSettings):
     mcp_request_timeout_seconds: int = 20
     mcp_retry_attempts: int = 2
     mcp_retry_backoff_seconds: float = 0.5
+
+    # N8N Workflow Integration
+    n8n_workflow_webhook_url: Optional[str] = None
+    n8n_workflow_timeout_seconds: int = 15
+    n8n_classification_model: Optional[str] = None
+    n8n_classification_timeout_seconds: int = 15
+    n8n_classification_retry_attempts: int = 3
+    n8n_classification_enable_fallback: bool = True
 
     cors_allowed_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
     cors_allow_credentials: bool = False
