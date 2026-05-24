@@ -16,6 +16,9 @@ from app.models import sql_query_execution as _sql_query_execution_model  # noqa
 from app.models import workflow_request as _workflow_request_model  # noqa: F401
 from app.models import research_result as _research_result_model  # noqa: F401
 from app.models import daily_report as _daily_report_model  # noqa: F401
+from app.models import crop_diagnosis as _crop_diagnosis_model  # noqa: F401
+from app.models import market_intelligence as _market_intelligence_model  # noqa: F401
+from app.models import risk_prediction as _risk_prediction_model  # noqa: F401
 
 
 def _make_engine():

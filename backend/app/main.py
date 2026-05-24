@@ -20,6 +20,7 @@ from app.api.research import router as research_router
 from app.api.sheet_agent import router as sheet_agent_router
 from app.api.tictactoe import router as tictactoe_router
 from app.api.workflow import router as workflow_router
+from app.api.agriculture import router as agriculture_router
 from app.core.config import settings
 from app.services.sheet_agent.agent import validate_sheet_agent_dependencies
 from app.utils.logging import configure_logging
@@ -28,6 +29,9 @@ from app.utils.logging import configure_logging
 import app.models.workflow_request  # noqa: F401
 import app.models.research_result  # noqa: F401
 import app.models.daily_report  # noqa: F401
+import app.models.crop_diagnosis  # noqa: F401
+import app.models.market_intelligence  # noqa: F401
+import app.models.risk_prediction  # noqa: F401
 
 
 app = FastAPI(title=settings.app_name or "amzur-ai-chat")
@@ -56,6 +60,7 @@ app.include_router(workflow_router, prefix="/api")
 app.include_router(agent_router, prefix="/api")
 app.include_router(analytics_router, prefix="/api")
 app.include_router(research_router, prefix="/api")
+app.include_router(agriculture_router, prefix="/api")
 
 
 @app.on_event("startup")
