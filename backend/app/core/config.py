@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 from typing import Optional
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -92,7 +93,10 @@ class Settings(BaseSettings):
     mcp_retry_backoff_seconds: float = 0.5
 
     # N8N Workflow Integration
-    n8n_workflow_webhook_url: Optional[str] = None
+    n8n_workflow_webhook_url: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("N8N_WEBHOOK_URL", "N8N_WORKFLOW_WEBHOOK_URL"),
+    )
     n8n_workflow_timeout_seconds: int = 15
     n8n_classification_model: Optional[str] = None
     n8n_classification_timeout_seconds: int = 15

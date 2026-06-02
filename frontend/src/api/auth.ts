@@ -60,6 +60,24 @@ export function getStoredToken(): string | null {
   return localStorage.getItem(TOKEN_KEY)
 }
 
+export function getStoredUserSubject(): string | null {
+  const token = getStoredToken()
+  if (!token) return null
+
+  try {
+    const parts = token.split('.')
+    if (parts.length < 2) return null
+
+    const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/')
+    const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=')
+    const payloadJson = atob(padded)
+    const payload = JSON.parse(payloadJson) as { sub?: string }
+    return typeof payload.sub === 'string' ? payload.sub : null
+  } catch {
+    return null
+  }
+}
+
 export function clearStoredToken(): void {
   localStorage.removeItem(TOKEN_KEY)
 }

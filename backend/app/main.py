@@ -21,6 +21,7 @@ from app.api.sheet_agent import router as sheet_agent_router
 from app.api.tictactoe import router as tictactoe_router
 from app.api.workflow import router as workflow_router
 from app.api.agriculture import router as agriculture_router
+from app.api.tickets import router as tickets_router
 from app.core.config import settings
 from app.services.sheet_agent.agent import validate_sheet_agent_dependencies
 from app.utils.logging import configure_logging
@@ -61,6 +62,7 @@ app.include_router(agent_router, prefix="/api")
 app.include_router(analytics_router, prefix="/api")
 app.include_router(research_router, prefix="/api")
 app.include_router(agriculture_router, prefix="/api")
+app.include_router(tickets_router, prefix="/api")
 
 
 @app.on_event("startup")

@@ -10,6 +10,7 @@ class MarketIntelligenceRequest(BaseModel):
 
     crop: str = Field(..., description="Crop name (e.g., wheat, tomato, onion)")
     region: Optional[str] = Field(None, description="Region or state in India")
+    location: Optional[str] = Field(None, description="Location alias used by external workflows")
     current_price: Optional[str] = Field(None, description="Current market price per quintal/kg")
     quantity: Optional[str] = Field(None, description="Quantity available to sell (kg or quintal)")
     storage_available: Optional[str] = Field(None, description="Storage availability (Yes/No or duration)")

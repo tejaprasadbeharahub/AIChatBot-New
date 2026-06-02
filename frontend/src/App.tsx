@@ -26,6 +26,7 @@ import { SheetComposer } from './components/sheet/SheetComposer'
 import { SheetQueryResult } from './components/sheet/SheetQueryResult'
 import { ResearchDigestView } from './components/ResearchDigestView'
 import { TicTacToeGame } from './components/TicTacToe/TicTacToeGame'
+import { FarmerDashboard } from './components/FarmerDashboard/FarmerDashboard'
 import './components/sheet/sheet.css'
 import { listChatDatasources, uploadSheetFile } from './api/sheet_agent'
 import type { SheetDatasource, SheetQueryResponse } from './types/sheet_agent'
@@ -192,6 +193,7 @@ function App() {
   const [isUploadingPdf, setIsUploadingPdf] = useState(false)
   const [isGeneratingImage, setIsGeneratingImage] = useState(false)
   const [isRunningNLSQL, setIsRunningNLSQL] = useState(false)
+  const [mainAppMode, setMainAppMode] = useState<'chat' | 'farm'>('chat')
   const [chatMode, setChatMode] = useState<'chat' | 'database' | 'sheets' | 'research' | 'tictactoe'>('chat')
   const [researchDepth, setResearchDepth] = useState<'quick' | 'balanced' | 'deep'>('balanced')
   const [researchMaxPapers, setResearchMaxPapers] = useState<number>(20)
@@ -1078,6 +1080,33 @@ function App() {
     )
   }
 
+  // Show Farm Dashboard if in farm mode
+  if (mainAppMode === 'farm') {
+    return (
+      <div>
+        <button
+          onClick={() => setMainAppMode('chat')}
+          style={{
+            position: 'fixed',
+            top: '10px',
+            right: '10px',
+            zIndex: 1000,
+            padding: '8px 16px',
+            backgroundColor: '#4B5563',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontSize: '14px'
+          }}
+        >
+          ← Back to Chat
+        </button>
+        <FarmerDashboard />
+      </div>
+    )
+  }
+
   return (
     <main className="workspace-shell">
       <aside className="chat-list-panel">
@@ -1086,9 +1115,11 @@ function App() {
             <p className="eyebrow">LangChain + Gemini</p>
             <h2>Amzur AI Chatbot</h2>
           </div>
-          <button type="button" className="ghost-btn" onClick={handleLogout}>
-            Logout
-          </button>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button type="button" className="ghost-btn" onClick={handleLogout}>
+              Logout
+            </button>
+          </div>
         </div>
 
         <button type="button" className="new-chat-btn" onClick={() => void startNewChat()}>
@@ -1248,6 +1279,12 @@ function App() {
               className={chatMode === 'tictactoe' ? 'mode-pill active' : 'mode-pill'}
               onClick={() => setChatMode('tictactoe')}
             >🎮 Game</button>
+            <button
+              type="button"
+              className="mode-pill"
+              onClick={() => setMainAppMode('farm')}
+              title="Farm AI Dashboard"
+            >🌾 Farm</button>
           </div>
           {chatMode === 'sheets' ? (
             <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
